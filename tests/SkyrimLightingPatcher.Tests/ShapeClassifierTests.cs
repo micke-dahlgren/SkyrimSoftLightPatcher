@@ -73,6 +73,19 @@ public sealed class ShapeClassifierTests
         Assert.Equal(ShapeKind.Eye, result.Kind);
     }
 
+    [Fact]
+    public void Classify_FileNameContainsClothes_ButSkinShapeStillReturnsBody()
+    {
+        var probe = CreateProbe(
+            filePath: @"C:\Mods\Meshes\clothes_and_skin.nif",
+            shapeName: "FemaleBody",
+            texturePaths: [@"textures\actors\character\character assets\femalebody_1.dds"]);
+
+        var result = classifier.Classify(probe);
+
+        Assert.Equal(ShapeKind.Body, result.Kind);
+    }
+
     private static NifShapeProbe CreateProbe(
         string filePath,
         string shapeName,

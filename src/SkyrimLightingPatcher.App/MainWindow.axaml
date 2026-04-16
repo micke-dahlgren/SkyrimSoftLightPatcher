@@ -71,18 +71,17 @@
       <Grid ColumnDefinitions="*,*,*" IsEnabled="{Binding CanEditSettings}" IsVisible="{Binding HasConfiguredRoots}">
         <Border Grid.Column="0" Classes="panel">
           <StackPanel Spacing="10">
-            <TextBlock Classes="section-title" Text="Eye Multiplier" />
-            <TextBlock Foreground="{DynamicResource TextBody}" Text="How much of the original eye effect should be shown (0 = none, 1 = unchanged)." TextWrapping="Wrap" />
-            <CheckBox Content="Enable Eye" IsChecked="{Binding EnableEye, Mode=TwoWay}" />
-            <NumericUpDown Minimum="0" Maximum="1" Increment="0.01" FormatString="0.00" Value="{Binding EyeValue, Mode=TwoWay}" IsEnabled="{Binding EnableEye}" />
-            <Slider Minimum="0" Maximum="1" TickFrequency="0.05" Value="{Binding EyeValue, Mode=TwoWay}" IsEnabled="{Binding EnableEye}" />
+            <TextBlock Classes="section-title" Text="Eye" />
+            <TextBlock Foreground="{DynamicResource TextBody}" Text="Patch eye shapes." TextWrapping="Wrap" />
+            <CheckBox Content="Patch Eye" IsChecked="{Binding EnableEye, Mode=TwoWay}" />
             <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6" HorizontalAlignment="Left">
               <Grid Width="300" Height="146" ClipToBounds="True">
                 <Image Source="avares://SkyrimLightingPatcher.App/Assets/eyes0.jpg"
-                       Stretch="UniformToFill" />
+                       Stretch="UniformToFill"
+                       IsVisible="{Binding EnableEye}" />
                 <Image Source="avares://SkyrimLightingPatcher.App/Assets/eyes1.jpg"
                        Stretch="UniformToFill"
-                       Opacity="{Binding EyeValue}" />
+                       IsVisible="{Binding EnableEye, Converter={x:Static BoolConverters.Not}}" />
               </Grid>
             </Border>
           </StackPanel>
@@ -90,18 +89,17 @@
 
         <Border Grid.Column="1" Classes="panel">
           <StackPanel Spacing="10">
-            <TextBlock Classes="section-title" Text="Body Multiplier" />
-            <TextBlock Foreground="{DynamicResource TextBody}" Text="How much of the original body/skin effect should be shown (0 = none, 1 = unchanged)." TextWrapping="Wrap" />
-            <CheckBox Content="Enable Body" IsChecked="{Binding EnableBody, Mode=TwoWay}" />
-            <NumericUpDown Minimum="0" Maximum="1" Increment="0.01" FormatString="0.00" Value="{Binding BodyValue, Mode=TwoWay}" IsEnabled="{Binding EnableBody}" />
-            <Slider Minimum="0" Maximum="1" TickFrequency="0.05" Value="{Binding BodyValue, Mode=TwoWay}" IsEnabled="{Binding EnableBody}" />
+            <TextBlock Classes="section-title" Text="Body" />
+            <TextBlock Foreground="{DynamicResource TextBody}" Text="Patch body/head/hands/feet skin shapes." TextWrapping="Wrap" />
+            <CheckBox Content="Patch Body" IsChecked="{Binding EnableBody, Mode=TwoWay}" />
             <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6" HorizontalAlignment="Left">
               <Grid Width="300" Height="146" ClipToBounds="True">
                 <Image Source="avares://SkyrimLightingPatcher.App/Assets/skin0.jpg"
-                       Stretch="UniformToFill" />
+                       Stretch="UniformToFill"
+                       IsVisible="{Binding EnableBody}" />
                 <Image Source="avares://SkyrimLightingPatcher.App/Assets/skin1.jpg"
                        Stretch="UniformToFill"
-                       Opacity="{Binding BodyValue}" />
+                       IsVisible="{Binding EnableBody, Converter={x:Static BoolConverters.Not}}" />
               </Grid>
             </Border>
           </StackPanel>
@@ -109,18 +107,17 @@
 
         <Border Grid.Column="2" Classes="panel">
           <StackPanel Spacing="10">
-            <TextBlock Classes="section-title" Text="Other Multiplier" />
-            <TextBlock Foreground="{DynamicResource TextBody}" Text="Optional: include other Soft_Lighting shapes. 0 = none, 1 = unchanged." TextWrapping="Wrap" />
-            <CheckBox Content="Enable Other" IsChecked="{Binding EnableOther, Mode=TwoWay}" />
-            <NumericUpDown Minimum="0" Maximum="1" Increment="0.01" FormatString="0.00" Value="{Binding OtherValue, Mode=TwoWay}" IsEnabled="{Binding EnableOther}" />
-            <Slider Minimum="0" Maximum="1" TickFrequency="0.05" Value="{Binding OtherValue, Mode=TwoWay}" IsEnabled="{Binding EnableOther}" />
+            <TextBlock Classes="section-title" Text="Other" />
+            <TextBlock Foreground="{DynamicResource TextBody}" Text="Patch other Soft_Lighting shapes (animals, flora, etc)." TextWrapping="Wrap" />
+            <CheckBox Content="Patch Other" IsChecked="{Binding EnableOther, Mode=TwoWay}" />
             <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6" HorizontalAlignment="Left">
               <Grid Width="300" Height="146" ClipToBounds="True">
                 <Image Source="avares://SkyrimLightingPatcher.App/Assets/other0.jpg"
-                       Stretch="UniformToFill" />
+                       Stretch="UniformToFill"
+                       IsVisible="{Binding EnableOther}" />
                 <Image Source="avares://SkyrimLightingPatcher.App/Assets/other1.jpg"
                        Stretch="UniformToFill"
-                       Opacity="{Binding OtherValue}" />
+                       IsVisible="{Binding EnableOther, Converter={x:Static BoolConverters.Not}}" />
               </Grid>
             </Border>
           </StackPanel>

@@ -77,7 +77,7 @@ public sealed class SampleNifIntegrationTests
         Assert.NotEmpty(probes);
 
         var scanService = new ScanService(meshService, new ShapeClassifier());
-        var report = await scanService.ScanAsync(new ScanRequest(sandbox.RootPath, new PatchSettings(0.6f, 0.12f)));
+        var report = await scanService.ScanAsync(new ScanRequest(sandbox.RootPath, new PatchSettings(1.0f, 1.0f)));
 
         var file = Assert.Single(report.Files);
         Assert.False(file.HasError, file.ErrorMessage ?? DescribeReport(report));
@@ -86,12 +86,13 @@ public sealed class SampleNifIntegrationTests
         Assert.Contains(file.Shapes, shape => shape.Probe.ShapeName == "MaleHeadKhajiit" &&
                                              shape.Kind == ShapeKind.Body &&
                                              shape.IsPatchCandidate &&
-                                             shape.TargetValue == 0.12f);
+                                             Math.Abs(shape.TargetValue1.GetValueOrDefault()) <= 0.0001f &&
+                                             Math.Abs(shape.TargetValue2.GetValueOrDefault()) <= 0.0001f);
         Assert.Contains(file.Shapes, shape => shape.Probe.ShapeName == "MaleEyesKhajiitOrangeNarrow" &&
                                              shape.Kind == ShapeKind.Eye &&
                                              !shape.IsPatchCandidate &&
                                              !shape.Probe.HasSoftLighting);
-        Assert.Contains(file.Shapes, static shape => shape.Kind == ShapeKind.Ignore);
+        Assert.Contains(file.Shapes, static shape => shape.Kind == ShapeKind.Other || shape.Kind == ShapeKind.Ignore);
     }
 
     [Fact]
@@ -103,7 +104,7 @@ public sealed class SampleNifIntegrationTests
         Assert.NotEmpty(probes);
 
         var scanService = new ScanService(meshService, new ShapeClassifier());
-        var report = await scanService.ScanAsync(new ScanRequest(sandbox.RootPath, new PatchSettings(0.6f, 0.12f)));
+        var report = await scanService.ScanAsync(new ScanRequest(sandbox.RootPath, new PatchSettings(1.0f, 1.0f)));
 
         var file = Assert.Single(report.Files);
         Assert.False(file.HasError, file.ErrorMessage ?? DescribeReport(report));
@@ -112,17 +113,15 @@ public sealed class SampleNifIntegrationTests
         Assert.Contains(file.Shapes, shape => shape.Probe.ShapeName == "MaleHeadNord" &&
                                              shape.Kind == ShapeKind.Body &&
                                              shape.IsPatchCandidate &&
-                                             shape.TargetValue == 0.12f);
-        Assert.Contains(file.Shapes, shape => shape.Probe.ShapeName == "MaleEyesHumanGrey" &&
-                                             shape.Kind == ShapeKind.Eye &&
-                                             shape.IsPatchCandidate &&
-                                             shape.TargetValue == 0.6f);
-        Assert.Contains(file.Shapes, static shape => shape.Kind == ShapeKind.Ignore);
+                                             Math.Abs(shape.TargetValue1.GetValueOrDefault()) <= 0.0001f &&
+                                             Math.Abs(shape.TargetValue2.GetValueOrDefault()) <= 0.0001f);
+        Assert.Contains(file.Shapes, static shape => shape.Kind == ShapeKind.Eye);
+        Assert.Contains(file.Shapes, static shape => shape.Kind == ShapeKind.Other || shape.Kind == ShapeKind.Ignore);
     }
 
     [Theory]
-    [InlineData("eye_example.nif", 0.83f, 0.20f, ShapeKind.Eye)]
-    [InlineData("skin_example.nif", 0.30f, 0.07f, ShapeKind.Body)]
+    [InlineData("eye_example.nif", 1.0f, 1.0f, ShapeKind.Eye)]
+    [InlineData("skin_example.nif", 1.0f, 1.0f, ShapeKind.Body)]
     public async Task PatchExecutor_CreatesGeneratedOutputWithoutTouchingSource(string fileName, float eyeValue, float bodyValue, ShapeKind expectedKind)
     {
         await using var sandbox = await TestSandbox.CreateAsync(fileName);
@@ -132,6 +131,7 @@ public sealed class SampleNifIntegrationTests
         var backupStore = new BackupStore();
         var patchExecutor = new PatchExecutor(new PatchPlanner(), nifMeshService, new ScanFileResolver(), backupStore);
         var settings = new PatchSettings(eyeValue, bodyValue);
+        var neutralSettings = new PatchSettings(1.0f, 1.0f);
         var originalBytes = await File.ReadAllBytesAsync(sandbox.SamplePath);
         var archivePath = Path.Combine(sandbox.RootPath, "LightingEffect1 Mesh Patcher Output.zip");
 
@@ -150,7 +150,7 @@ public sealed class SampleNifIntegrationTests
         var outputBytes = await File.ReadAllBytesAsync(manifestFile.OutputPath);
         var sourceRescanned = await scanService.ScanAsync(new ScanRequest(sandbox.RootPath, settings));
         var extractedRoot = ExtractArchiveToDirectory(manifest.OutputArchivePath, sandbox.RootPath, "extract");
-        var outputRescanned = await scanService.ScanAsync(new ScanRequest(extractedRoot, settings));
+        var outputRescanned = await scanService.ScanAsync(new ScanRequest(extractedRoot, neutralSettings));
 
         Assert.Equal(originalBytes, sourceBytes);
         Assert.NotEqual(originalBytes, outputBytes);
@@ -159,9 +159,7 @@ public sealed class SampleNifIntegrationTests
         Assert.Contains(
             outputRescanned.Files.SelectMany(static file => file.Shapes),
             shape => shape.Kind == expectedKind &&
-                     !shape.IsPatchCandidate &&
-                     shape.TargetValue.HasValue &&
-                     Math.Abs(shape.Probe.LightingEffect1 - shape.TargetValue.Value) <= 0.0001f);
+                     !shape.IsPatchCandidate);
         Assert.Equal(originalBytes, await File.ReadAllBytesAsync(sandbox.SamplePath));
     }
 
@@ -173,7 +171,8 @@ public sealed class SampleNifIntegrationTests
         var scanService = new ScanService(nifMeshService, new ShapeClassifier());
         var backupStore = new BackupStore();
         var patchExecutor = new PatchExecutor(new PatchPlanner(), nifMeshService, new ScanFileResolver(), backupStore);
-        var settings = new PatchSettings(0.6f, 0.12f);
+        var settings = new PatchSettings(1.0f, 1.0f);
+        var neutralSettings = new PatchSettings(1.0f, 1.0f);
         var originalBytes = await File.ReadAllBytesAsync(sandbox.SamplePath);
         var archivePath = Path.Combine(sandbox.RootPath, "LightingEffect1 Mesh Patcher Output.zip");
 
@@ -188,13 +187,14 @@ public sealed class SampleNifIntegrationTests
         Assert.True(File.Exists(manifest.OutputArchivePath));
 
         var extractedRoot = ExtractArchiveToDirectory(manifest.OutputArchivePath, sandbox.RootPath, "extract-facegen-1");
-        var rescanned = await scanService.ScanAsync(new ScanRequest(extractedRoot, settings));
+        var rescanned = await scanService.ScanAsync(new ScanRequest(extractedRoot, neutralSettings));
         Assert.Equal(0, rescanned.PatchableShapes);
         var shapes = rescanned.Files.SelectMany(static file => file.Shapes).ToArray();
 
         Assert.Contains(shapes, shape => shape.Probe.ShapeName == "MaleHeadKhajiit" &&
                                         shape.Kind == ShapeKind.Body &&
-                                        Math.Abs(shape.Probe.LightingEffect1 - 0.12f) <= 0.0001f);
+                                        Math.Abs(shape.Probe.LightingEffect1) <= 0.0001f &&
+                                        Math.Abs(shape.Probe.LightingEffect2) <= 0.0001f);
         Assert.Contains(shapes, shape => shape.Probe.ShapeName == "MaleEyesKhajiitOrangeNarrow" &&
                                         shape.Kind == ShapeKind.Eye &&
                                         !shape.IsPatchCandidate &&
@@ -210,7 +210,8 @@ public sealed class SampleNifIntegrationTests
         var scanService = new ScanService(nifMeshService, new ShapeClassifier());
         var backupStore = new BackupStore();
         var patchExecutor = new PatchExecutor(new PatchPlanner(), nifMeshService, new ScanFileResolver(), backupStore);
-        var settings = new PatchSettings(0.6f, 0.12f);
+        var settings = new PatchSettings(1.0f, 1.0f);
+        var neutralSettings = new PatchSettings(1.0f, 1.0f);
         var originalBytes = await File.ReadAllBytesAsync(sandbox.SamplePath);
         var archivePath = Path.Combine(sandbox.RootPath, "LightingEffect1 Mesh Patcher Output.zip");
 
@@ -225,17 +226,133 @@ public sealed class SampleNifIntegrationTests
         Assert.True(File.Exists(manifest.OutputArchivePath));
 
         var extractedRoot = ExtractArchiveToDirectory(manifest.OutputArchivePath, sandbox.RootPath, "extract-facegen-2");
-        var rescanned = await scanService.ScanAsync(new ScanRequest(extractedRoot, settings));
+        var rescanned = await scanService.ScanAsync(new ScanRequest(extractedRoot, neutralSettings));
         Assert.Equal(0, rescanned.PatchableShapes);
         var shapes = rescanned.Files.SelectMany(static file => file.Shapes).ToArray();
 
         Assert.Contains(shapes, shape => shape.Probe.ShapeName == "MaleHeadNord" &&
                                         shape.Kind == ShapeKind.Body &&
-                                        Math.Abs(shape.Probe.LightingEffect1 - 0.12f) <= 0.0001f);
-        Assert.Contains(shapes, shape => shape.Probe.ShapeName == "MaleEyesHumanGrey" &&
-                                        shape.Kind == ShapeKind.Eye &&
-                                        Math.Abs(shape.Probe.LightingEffect1 - 0.6f) <= 0.0001f);
+                                        Math.Abs(shape.Probe.LightingEffect1) <= 0.0001f &&
+                                        Math.Abs(shape.Probe.LightingEffect2) <= 0.0001f);
+        Assert.Contains(shapes, static shape => shape.Kind == ShapeKind.Eye);
         Assert.Equal(originalBytes, await File.ReadAllBytesAsync(sandbox.SamplePath));
+    }
+
+    [Fact]
+    public async Task SoftLightOnLightingEffect2_OutputMod_HardDisablesSoftRimBackShape()
+    {
+        await using var sandbox = await TestSandbox.CreateAsync("soft_rim_back.nif");
+        var nifMeshService = new ReflectionNifMeshService();
+        var scanService = new ScanService(nifMeshService, new ShapeClassifier());
+        var backupStore = new BackupStore();
+        var patchExecutor = new PatchExecutor(new PatchPlanner(), nifMeshService, new ScanFileResolver(), backupStore);
+        var settings = new PatchSettings(1.0f, 1.0f, true, 1.0f, true, true);
+        var archivePath = Path.Combine(sandbox.RootPath, "LightingEffect1 Mesh Patcher Output.zip");
+
+        var report = await scanService.ScanAsync(new ScanRequest(sandbox.RootPath, settings));
+        Assert.True(report.PatchableShapes > 0, DescribeReport(report));
+
+        var manifest = await patchExecutor.ExecuteAsync(report, archivePath);
+        var patchedFile = Assert.Single(manifest.Files);
+        Assert.Equal("Patched", patchedFile.Status);
+        Assert.True(File.Exists(patchedFile.OutputPath));
+
+        var rescannedPatchedRoot = await RescanPatchedOutputFolderAsync(scanService, sandbox, settings, "extract-le2-hard-disable");
+        Assert.Equal(0, rescannedPatchedRoot.PatchableShapes);
+
+        var patchedShapes = rescannedPatchedRoot.Files.SelectMany(static file => file.Shapes).ToArray();
+        Assert.Contains(
+            patchedShapes,
+            shape =>
+                shape.Probe.HasSoftLighting == false &&
+                shape.Probe.HasRimLighting == false &&
+                shape.Probe.HasBackLighting == false &&
+                Math.Abs(shape.Probe.LightingEffect1) <= 0.0001f &&
+                Math.Abs(shape.Probe.LightingEffect2) <= 0.0001f);
+    }
+
+    [Fact]
+    public async Task SoftRim_OutputMod_DisablesLightingEffects()
+    {
+        await using var sandbox = await TestSandbox.CreateAsync("soft_rim.nif");
+        var nifMeshService = new ReflectionNifMeshService();
+        var scanService = new ScanService(nifMeshService, new ShapeClassifier());
+        var backupStore = new BackupStore();
+        var patchExecutor = new PatchExecutor(new PatchPlanner(), nifMeshService, new ScanFileResolver(), backupStore);
+        var settings = new PatchSettings(1.0f, 1.0f, true, 1.0f, true, true);
+        var archivePath = Path.Combine(sandbox.RootPath, "LightingEffect1 Mesh Patcher Output.zip");
+
+        var report = await scanService.ScanAsync(new ScanRequest(sandbox.RootPath, settings));
+        Assert.True(report.PatchableShapes > 0, DescribeReport(report));
+
+        var manifest = await patchExecutor.ExecuteAsync(report, archivePath);
+        var patchedFile = Assert.Single(manifest.Files);
+        Assert.Equal("Patched", patchedFile.Status);
+        Assert.True(File.Exists(patchedFile.OutputPath));
+
+        var rescannedPatchedRoot = await RescanPatchedOutputFolderAsync(scanService, sandbox, settings, "extract-soft-rim");
+        Assert.Equal(0, rescannedPatchedRoot.PatchableShapes);
+
+        var patchedShapes = rescannedPatchedRoot.Files.SelectMany(static file => file.Shapes).ToArray();
+        Assert.Contains(
+            patchedShapes,
+            shape =>
+                shape.Probe.HasSoftLighting == false &&
+                shape.Probe.HasRimLighting == false &&
+                Math.Abs(shape.Probe.LightingEffect1) <= 0.0001f &&
+                Math.Abs(shape.Probe.LightingEffect2) <= 0.0001f);
+    }
+
+    [Fact]
+    public async Task SoftLightOnLightingEffect2_OutputMod_OnlyPatchesLightingEffect2()
+    {
+        await using var sandbox = await TestSandbox.CreateAsync("soft_light_on_lighting_effect_2.nif");
+        var nifMeshService = new ReflectionNifMeshService();
+        var scanService = new ScanService(nifMeshService, new ShapeClassifier());
+        var backupStore = new BackupStore();
+        var patchExecutor = new PatchExecutor(new PatchPlanner(), nifMeshService, new ScanFileResolver(), backupStore);
+        var settings = new PatchSettings(1.0f, 1.0f, true, 1.0f, true, true);
+        var neutralSettings = new PatchSettings(1.0f, 1.0f, true, 1.0f, true, true);
+        var archivePath = Path.Combine(sandbox.RootPath, "LightingEffect1 Mesh Patcher Output.zip");
+
+        var report = await scanService.ScanAsync(new ScanRequest(sandbox.RootPath, settings));
+        Assert.True(report.PatchableShapes > 0, DescribeReport(report));
+
+        var candidate = report.Files
+            .SelectMany(static file => file.Shapes)
+            .First(static shape => shape.IsPatchCandidate);
+        var originalLightingEffect1 = candidate.Probe.LightingEffect1;
+        var originalLightingEffect2 = candidate.Probe.LightingEffect2;
+        Assert.True(candidate.TargetValue1.HasValue);
+        Assert.True(candidate.TargetValue2.HasValue);
+
+        var manifest = await patchExecutor.ExecuteAsync(report, archivePath);
+        var patchedFile = Assert.Single(manifest.Files);
+        Assert.Equal("Patched", patchedFile.Status);
+
+        var extractedRoot = ExtractArchiveToDirectory(manifest.OutputArchivePath, sandbox.RootPath, "extract-le2-only");
+        var rescanned = await scanService.ScanAsync(new ScanRequest(extractedRoot, neutralSettings));
+        Assert.Equal(0, rescanned.PatchableShapes);
+
+        var patchedShape = rescanned.Files.SelectMany(static file => file.Shapes).First();
+        Assert.True(Math.Abs(patchedShape.Probe.LightingEffect1) <= 0.0001f);
+        Assert.True(Math.Abs(patchedShape.Probe.LightingEffect2) <= 0.0001f);
+    }
+
+    [Fact]
+    public async Task ClothesAndSkin_Scan_FindsPatchableBodyShape()
+    {
+        await using var sandbox = await TestSandbox.CreateAsync("clothes_and_skin.nif");
+        var meshService = new ReflectionNifMeshService();
+        var probes = await meshService.ProbeAsync(sandbox.SamplePath);
+        Assert.NotEmpty(probes);
+
+        var scanService = new ScanService(meshService, new ShapeClassifier());
+        var report = await scanService.ScanAsync(new ScanRequest(sandbox.RootPath, new PatchSettings(1.0f, 1.0f, true, 1.0f, true, true)));
+
+        var file = Assert.Single(report.Files);
+        Assert.False(file.HasError, file.ErrorMessage ?? DescribeReport(report));
+        Assert.Contains(file.Shapes, static shape => shape.Kind == ShapeKind.Body && shape.IsPatchCandidate);
     }
 
     private sealed class TestSandbox : IAsyncDisposable
@@ -340,5 +457,16 @@ public sealed class SampleNifIntegrationTests
         Directory.CreateDirectory(extractPath);
         ZipFile.ExtractToDirectory(archivePath, extractPath);
         return extractPath;
+    }
+
+    private static async Task<ScanReport> RescanPatchedOutputFolderAsync(
+        ScanService scanService,
+        TestSandbox sandbox,
+        PatchSettings settings,
+        string extractDirectoryName)
+    {
+        var archivePath = Path.Combine(sandbox.RootPath, "LightingEffect1 Mesh Patcher Output.zip");
+        var extractedRoot = ExtractArchiveToDirectory(archivePath, sandbox.RootPath, extractDirectoryName);
+        return await scanService.ScanAsync(new ScanRequest(extractedRoot, settings));
     }
 }

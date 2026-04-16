@@ -43,10 +43,11 @@ public sealed class PatchExecutorTests
         Assert.NotEmpty(progressUpdates);
         Assert.Contains(progressUpdates, static update => update.FilesProcessed == 0 && update.TotalFiles == 2);
         Assert.Contains(progressUpdates, static update => update.FilesProcessed == 1 && update.SuccessfulFiles == 1);
-        var finalUpdate = Assert.Single(progressUpdates.Where(static update => update.FilesProcessed == 2));
+        var finalUpdate = progressUpdates.Last(static update => update.FilesProcessed == 2);
         Assert.Equal(2, finalUpdate.TotalFiles);
         Assert.Equal(2, finalUpdate.SuccessfulFiles);
         Assert.Equal(0, finalUpdate.FailedFiles);
+        Assert.Contains(progressUpdates, static update => update.CurrentFilePath == "__status__: Creating output archive (.zip)...");
     }
 
     private static ShapeScanResult CreateShapeResult(

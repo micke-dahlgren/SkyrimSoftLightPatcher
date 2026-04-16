@@ -49,13 +49,6 @@ public sealed class ShapeClassifier : IShapeClassifier
         "teeth",
         "tongue",
         "beard",
-        "helmet",
-        "armor",
-        "armour",
-        "gauntlet",
-        "boot",
-        "clothes",
-        "robe",
     ];
 
     public ShapeClassification Classify(NifShapeProbe probe)
@@ -67,7 +60,6 @@ public sealed class ShapeClassifier : IShapeClassifier
         var combinedMetadata = string.Join(
             " ",
             normalizedTexturePaths
-                .Append(normalizedFilePath)
                 .Append(normalizedShapeName)
                 .Append(probe.Shader.ShaderType ?? string.Empty)
                 .Concat(probe.Shader.Flags));

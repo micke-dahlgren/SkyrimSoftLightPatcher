@@ -56,6 +56,7 @@ public sealed class ReflectionNifMeshService : INifMeshService
                 GetTexturePaths(nifFile, shader),
                 shader.HasSoftlight,
                 shader.HasRimlight,
+                shader.HasBacklight,
                 GetLightingEffect1(shader),
                 GetLightingEffect2(shader)));
 
@@ -98,10 +99,19 @@ public sealed class ReflectionNifMeshService : INifMeshService
                 ?? throw new InvalidOperationException($"Shape '{shapeName}' no longer has a BSLightingShaderProperty.");
             var shader = ResolveShaderBlock(nifFile, shaderCandidate);
 
-            SetLightingEffect1(shader, operation.NewValue1);
+            if (operation.NewValue1.HasValue)
+            {
+                SetLightingEffect1(shader, operation.NewValue1.Value);
+            }
             if (operation.NewValue2.HasValue)
             {
                 SetLightingEffect2(shader, operation.NewValue2.Value);
+            }
+            if (operation.ClearSoftRimBackFlags)
+            {
+                shader.HasSoftlight = false;
+                shader.HasRimlight = false;
+                shader.HasBacklight = false;
             }
             applied++;
             index++;

@@ -10,8 +10,8 @@ public sealed class OutputModServiceTests
     {
         var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-output-tests", Guid.NewGuid().ToString("N"));
         var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
-        var outputPath = Path.Combine(appHome, "GeneratedMods", "LightingEffect1 Mesh Patcher Output");
-        var archivePath = Path.Combine(rootPath, "LightingEffect1 Mesh Patcher Output.zip");
+        var outputPath = Path.Combine(appHome, "GeneratedMods", "Soft Light Mesh Patcher Output");
+        var archivePath = Path.Combine(rootPath, "Soft Light Mesh Patcher Output.zip");
         using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
         Directory.CreateDirectory(rootPath);
         Directory.CreateDirectory(outputPath);
@@ -23,7 +23,7 @@ public sealed class OutputModServiceTests
             rootPath,
             outputPath,
             archivePath,
-            "LightingEffect1 Mesh Patcher Output",
+            "Soft Light Mesh Patcher Output",
             false,
             DateTimeOffset.Now,
             new PatchSettings(0.4f, 0.1f),
@@ -43,8 +43,8 @@ public sealed class OutputModServiceTests
     {
         var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-output-tests", Guid.NewGuid().ToString("N"));
         var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
-        var outputPath = Path.Combine(appHome, "GeneratedMods", "LightingEffect1 Mesh Patcher Output");
-        var archivePath = Path.Combine(rootPath, "LightingEffect1 Mesh Patcher Output.zip");
+        var outputPath = Path.Combine(appHome, "GeneratedMods", "Soft Light Mesh Patcher Output");
+        var archivePath = Path.Combine(rootPath, "Soft Light Mesh Patcher Output.zip");
         using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
         Directory.CreateDirectory(rootPath);
         Directory.CreateDirectory(outputPath);
@@ -56,7 +56,7 @@ public sealed class OutputModServiceTests
             rootPath,
             outputPath,
             archivePath,
-            "LightingEffect1 Mesh Patcher Output",
+            "Soft Light Mesh Patcher Output",
             false,
             DateTimeOffset.Now,
             new PatchSettings(0.4f, 0.1f),

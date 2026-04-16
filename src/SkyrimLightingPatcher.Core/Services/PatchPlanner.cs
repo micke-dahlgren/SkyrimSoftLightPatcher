@@ -45,7 +45,7 @@ public sealed class PatchPlanner : IPatchPlanner
 
     private static PatchCandidate? CreateCandidate(string filePath, ShapeScanResult scanResult)
     {
-        if (!scanResult.IsPatchCandidate || !scanResult.TargetValue1.HasValue)
+        if (!scanResult.IsPatchCandidate || (!scanResult.TargetValue1.HasValue && !scanResult.TargetValue2.HasValue))
         {
             return null;
         }
@@ -55,9 +55,10 @@ public sealed class PatchPlanner : IPatchPlanner
             scanResult.Probe.ShapeKey,
             scanResult.Probe.ShapeName,
             scanResult.Kind,
-            scanResult.Probe.LightingEffect1,
-            scanResult.TargetValue1!.Value,
+            scanResult.TargetValue1.HasValue ? scanResult.Probe.LightingEffect1 : null,
+            scanResult.TargetValue1,
             scanResult.TargetValue2.HasValue ? scanResult.Probe.LightingEffect2 : null,
-            scanResult.TargetValue2);
+            scanResult.TargetValue2,
+            scanResult.Probe.HasSoftLighting && scanResult.Probe.HasRimLighting);
     }
 }

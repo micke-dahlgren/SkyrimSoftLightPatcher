@@ -88,6 +88,7 @@ public sealed record NifShapeProbe(
     IReadOnlyList<string> TexturePaths,
     bool HasSoftLighting,
     bool HasRimLighting,
+    bool HasBackLighting,
     float LightingEffect1,
     float LightingEffect2)
 {
@@ -99,7 +100,7 @@ public sealed record NifShapeProbe(
         IReadOnlyList<string> TexturePaths,
         bool HasSoftLighting,
         float LightingEffect1)
-        : this(FilePath, ShapeKey, ShapeName, Shader, TexturePaths, HasSoftLighting, false, LightingEffect1, 0.0f)
+        : this(FilePath, ShapeKey, ShapeName, Shader, TexturePaths, HasSoftLighting, false, false, LightingEffect1, 0.0f)
     {
     }
 }

@@ -92,22 +92,13 @@ public partial class MainWindowViewModel : ObservableObject
     private string rootPath = string.Empty;
 
     [ObservableProperty]
-    private double eyeValue = 1.0;
-
-    [ObservableProperty]
     private bool enableEye = true;
-
-    [ObservableProperty]
-    private double bodyValue = 1.0;
 
     [ObservableProperty]
     private bool enableBody = true;
 
     [ObservableProperty]
     private bool enableOther;
-
-    [ObservableProperty]
-    private double otherValue = 1.0;
 
     [ObservableProperty]
     private string outputDestinationPath = string.Empty;
@@ -190,7 +181,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     public bool ShowScanSections => HasConfiguredRoots && HasScanStarted;
 
-    public bool HasScanResults => ShowScanSections && !HasNoResults;
+    public bool HasScanResults => ShowScanSections;
 
     public bool HasSelectionSummary => !string.IsNullOrWhiteSpace(SelectionSummaryText);
 
@@ -206,12 +197,9 @@ public partial class MainWindowViewModel : ObservableObject
 
         initialized = true;
         RootPath = string.Empty;
-        EyeValue = 1.0;
         EnableEye = true;
-        BodyValue = 1.0;
         EnableBody = true;
         EnableOther = false;
-        OtherValue = 1.0;
         OutputDestinationPath = string.Empty;
         SkyrimDataPath = string.Empty;
         CurrentOutputPath = null;
@@ -274,19 +262,9 @@ public partial class MainWindowViewModel : ObservableObject
         RefreshCommandState();
     }
 
-    partial void OnEyeValueChanged(double value)
-    {
-        RefreshCommandState();
-    }
-
     partial void OnEnableEyeChanged(bool value)
     {
         OnPropertyChanged(nameof(HasAnyEnabledCategory));
-        RefreshCommandState();
-    }
-
-    partial void OnBodyValueChanged(double value)
-    {
         RefreshCommandState();
     }
 
@@ -315,11 +293,6 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnEnableOtherChanged(bool value)
     {
         OnPropertyChanged(nameof(HasAnyEnabledCategory));
-        RefreshCommandState();
-    }
-
-    partial void OnOtherValueChanged(double value)
-    {
         RefreshCommandState();
     }
 
@@ -640,9 +613,7 @@ public partial class MainWindowViewModel : ObservableObject
                     {
                         ShapeName = string.IsNullOrWhiteSpace(shape.Probe.ShapeName) ? "(unnamed shape)" : shape.Probe.ShapeName,
                         KindText = shape.Kind.ToString(),
-                        ValueText = shape.TargetValue2.HasValue
-                            ? $"LE1 {shape.Probe.LightingEffect1:0.000}->{shape.TargetValue1!.Value:0.000}, LE2 {shape.Probe.LightingEffect2:0.000}->{shape.TargetValue2.Value:0.000}"
-                            : $"LE1 {shape.Probe.LightingEffect1:0.000}->{shape.TargetValue1!.Value:0.000}",
+                        ValueText = FormatValueText(shape),
                         DecisionText = "Patch candidate",
                         ReasonSummary = string.Join(" ", shape.Reasons),
                     }).ToArray(),
@@ -662,7 +633,7 @@ public partial class MainWindowViewModel : ObservableObject
         HasNoResults = ModGroups.Count == 0;
         EmptyResultsMessage = report.FilesScanned == 0
             ? "No scan results yet. Pick a folder and run Scan."
-            : "No patchable meshes found for the current folder and values.";
+            : "No patchable meshes found for the current folder and values. Click Reset to adjust settings, then scan again.";
         UpdateSelectionSummary();
         RefreshCommandState();
     }
@@ -846,6 +817,26 @@ public partial class MainWindowViewModel : ObservableObject
         return GetPreviewDisplayPath(rootPath, file, isVortexStagingRoot);
     }
 
+    private static string FormatValueText(ShapeScanResult shape)
+    {
+        if (shape.TargetValue1.HasValue && shape.TargetValue2.HasValue)
+        {
+            return $"LE1 {shape.Probe.LightingEffect1:0.000}->{shape.TargetValue1.Value:0.000}, LE2 {shape.Probe.LightingEffect2:0.000}->{shape.TargetValue2.Value:0.000}";
+        }
+
+        if (shape.TargetValue1.HasValue)
+        {
+            return $"LE1 {shape.Probe.LightingEffect1:0.000}->{shape.TargetValue1.Value:0.000}";
+        }
+
+        if (shape.TargetValue2.HasValue)
+        {
+            return $"LE2 {shape.Probe.LightingEffect2:0.000}->{shape.TargetValue2.Value:0.000}";
+        }
+
+        return "No value change";
+    }
+
     private static bool TryGetGameDataMeshCategory(FileScanResult file, out string category)
     {
         category = string.Empty;
@@ -927,7 +918,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     private PatchSettings CreatePatchSettings()
     {
-        return new PatchSettings((float)EyeValue, (float)BodyValue, EnableOther, (float)OtherValue, EnableEye, EnableBody).ClampToSafeRange();
+        return new PatchSettings(1.0f, 1.0f, EnableOther, 1.0f, EnableEye, EnableBody);
     }
 
     private async Task PersistSettingsAsync()
@@ -1084,12 +1075,13 @@ public partial class MainWindowViewModel : ObservableObject
                                 [@"textures\actors\character\eyes\blueeye.dds"],
                                 true,
                                 false,
+                                false,
                                 0.20f,
                                 0.00f),
                             ShapeKind.Eye,
                             true,
-                            request.Settings.EyeValue,
-                            null,
+                            0.0f,
+                            0.0f,
                             "Eye",
                             ["Matched eye texture directory.", "Eligible for patching."]),
                     ]),
@@ -1105,12 +1097,13 @@ public partial class MainWindowViewModel : ObservableObject
                                 [@"textures\actors\character\femalebody_1.dds"],
                                 true,
                                 false,
+                                false,
                                 0.15f,
                                 0.00f),
                             ShapeKind.Body,
                             true,
-                            request.Settings.BodyValue,
-                            null,
+                            0.0f,
+                            0.0f,
                             "Body",
                             ["Matched skin-like texture path.", "Eligible for patching."]),
                     ]),

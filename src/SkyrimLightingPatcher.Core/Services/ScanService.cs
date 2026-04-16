@@ -178,33 +178,33 @@ public sealed class ScanService : IScanService
     private ShapeScanResult CreateScanResult(NifShapeProbe probe, PatchSettings settings)
     {
         var classification = shapeClassifier.Classify(probe);
-        float? multiplier = classification.Kind switch
+        var categoryEnabled = classification.Kind switch
         {
-            ShapeKind.Eye when settings.EnableEye => settings.EyeValue,
-            ShapeKind.Body when settings.EnableBody => settings.BodyValue,
-            ShapeKind.Other when settings.EnableOther => settings.OtherValue,
-            _ => null,
+            ShapeKind.Eye => settings.EnableEye,
+            ShapeKind.Body => settings.EnableBody,
+            ShapeKind.Other => settings.EnableOther,
+            _ => false,
         };
 
         float? target1 = null;
         float? target2 = null;
-        if (multiplier.HasValue && probe.HasSoftLighting)
+        if (categoryEnabled && probe.HasSoftLighting)
         {
-            target1 = probe.LightingEffect1 * multiplier.Value;
-            if (probe.HasRimLighting)
-            {
-                target2 = probe.LightingEffect2 * multiplier.Value;
-            }
+            target1 = 0.0f;
+            target2 = 0.0f;
         }
 
         var needsEffect1Change = target1.HasValue &&
                                  Math.Abs(probe.LightingEffect1 - target1.Value) > 0.0001f;
         var needsEffect2Change = target2.HasValue &&
                                  Math.Abs(probe.LightingEffect2 - target2.Value) > 0.0001f;
-        var isPatchCandidate = needsEffect1Change || needsEffect2Change;
+        var needsFlagChange = categoryEnabled &&
+                              probe.HasSoftLighting &&
+                              probe.HasRimLighting;
+        var isPatchCandidate = needsEffect1Change || needsEffect2Change || needsFlagChange;
 
         var reasons = new List<string>(classification.Reasons);
-        if (!multiplier.HasValue)
+        if (!categoryEnabled)
         {
             reasons.Add("Shape ignored by classifier.");
         }
@@ -214,11 +214,13 @@ public sealed class ScanService : IScanService
         }
         else if (!isPatchCandidate)
         {
-            reasons.Add("Lighting effect(s) already match the requested multiplier.");
+            reasons.Add("Lighting effects already disabled.");
         }
         else
         {
-            reasons.Add("Eligible for patching.");
+            reasons.Add(needsFlagChange
+                ? "Eligible for patching (LE1/LE2 -> 0.0, clear Soft/Rim flags)."
+                : "Eligible for patching (LE1/LE2 -> 0.0).");
         }
 
         return new ShapeScanResult(
