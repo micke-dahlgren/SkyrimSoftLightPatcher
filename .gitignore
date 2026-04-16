@@ -1,0 +1,7 @@
+/.dotnet-cli/
+/.vs/
+/**/bin/
+/**/obj/
+/TestResults/
+/publish/
+*.log

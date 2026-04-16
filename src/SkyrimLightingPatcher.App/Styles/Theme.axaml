@@ -1,0 +1,17 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <SolidColorBrush x:Key="SurfaceBackgroundDark">#141414</SolidColorBrush>
+    <SolidColorBrush x:Key="SurfaceBackgroundLight">#1f1e1e</SolidColorBrush>
+    <SolidColorBrush x:Key="Border">#6b6b6b</SolidColorBrush>
+    <SolidColorBrush x:Key="CTA">#d6b745</SolidColorBrush>
+    <SolidColorBrush x:Key="CTAHover">#e0d29f</SolidColorBrush>
+    <SolidColorBrush x:Key="TextHeader">#b3b3b3</SolidColorBrush>
+    <SolidColorBrush x:Key="TextBody">#808080</SolidColorBrush>
+    <SolidColorBrush x:Key="TextLabel">#7d8791</SolidColorBrush>
+
+    <SolidColorBrush x:Key="StatusInfoBrush">#A9D7FF</SolidColorBrush>
+    <SolidColorBrush x:Key="StatusSuccessBrush">#B9F6CA</SolidColorBrush>
+    <SolidColorBrush x:Key="StatusErrorBrush">#FFB3B3</SolidColorBrush>
+  </Styles.Resources>
+</Styles>
