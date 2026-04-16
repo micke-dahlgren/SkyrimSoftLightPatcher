@@ -52,8 +52,10 @@ public sealed class PatchExecutor(
                         candidate.ShapeKey,
                         candidate.ShapeName,
                         candidate.Kind,
-                        candidate.OldValue,
-                        candidate.NewValue))
+                        candidate.OldValue1,
+                        candidate.NewValue1,
+                        candidate.OldValue2,
+                        candidate.NewValue2))
                     .ToArray();
 
                 await nifMeshService
@@ -65,7 +67,7 @@ public sealed class PatchExecutor(
                     outputPath,
                     string.Empty,
                     "Patched",
-                    operations.Select(static op => new PatchedShapeRecord(op.ShapeKey, op.ShapeName, op.Kind, op.OldValue, op.NewValue)).ToArray(),
+                    operations.Select(static op => new PatchedShapeRecord(op.ShapeKey, op.ShapeName, op.Kind, op.OldValue1, op.NewValue1, op.OldValue2, op.NewValue2)).ToArray(),
                     filePlan.Source.SourceModName));
                 successfulFiles++;
             }

@@ -28,7 +28,7 @@ public interface IScanService
 
 public interface IScanFileResolver
 {
-    Task<IReadOnlyList<MeshSource>> ResolveFilePathsAsync(string rootPath, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<MeshSource>> ResolveFilePathsAsync(string rootPath, string? skyrimDataPath = null, CancellationToken cancellationToken = default);
 
     Task<string> MaterializeSourceAsync(MeshSource source, CancellationToken cancellationToken = default);
 }
@@ -82,4 +82,6 @@ public interface ISettingsStore
 public interface IVortexPathResolver
 {
     Task<VortexStagingFolder?> TryResolveSkyrimSeAsync(CancellationToken cancellationToken = default);
+
+    Task<string?> TryResolveSkyrimDataPathAsync(CancellationToken cancellationToken = default);
 }

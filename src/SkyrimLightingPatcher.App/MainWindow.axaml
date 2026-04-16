@@ -43,6 +43,19 @@
 
           <StackPanel Spacing="8">
             <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Skyrim Data root:" />
+              <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding SkyrimDataPath}" Foreground="{DynamicResource TextBody}" TextWrapping="Wrap" />
+            </Grid>
+            <Grid ColumnDefinitions="Auto,Auto,*">
+              <Button Grid.Column="0" Command="{Binding DetectSkyrimDataCommand}" Content="Use Skyrim Data" />
+              <Button Grid.Column="1" Margin="8,0,0,0" Click="BrowseSkyrimDataFolder_OnClick" Content="Browse" />
+            </Grid>
+          </StackPanel>
+
+          <Border Height="10" Background="Transparent" />
+
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="Auto,*">
               <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Destination root:" />
               <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding OutputDestinationPath}" Foreground="{DynamicResource TextBody}" TextWrapping="Wrap" />
             </Grid>
@@ -55,13 +68,14 @@
         </StackPanel>
       </Border>
 
-      <Grid ColumnDefinitions="*,*" IsEnabled="{Binding CanEditSettings}" IsVisible="{Binding HasConfiguredRoots}">
+      <Grid ColumnDefinitions="*,*,*" IsEnabled="{Binding CanEditSettings}" IsVisible="{Binding HasConfiguredRoots}">
         <Border Grid.Column="0" Classes="panel">
           <StackPanel Spacing="10">
-            <TextBlock Classes="section-title" Text="Eye Value" />
-            <TextBlock Foreground="{DynamicResource TextBody}" Text="Soft Light strength for eye shapes." />
-            <NumericUpDown Minimum="0" Maximum="1" Increment="0.01" FormatString="0.00" Value="{Binding EyeValue, Mode=TwoWay}" />
-            <Slider Minimum="0" Maximum="1" TickFrequency="0.05" Value="{Binding EyeValue, Mode=TwoWay}" />
+            <TextBlock Classes="section-title" Text="Eye Multiplier" />
+            <TextBlock Foreground="{DynamicResource TextBody}" Text="How much of the original eye effect should be shown (0 = none, 1 = unchanged)." TextWrapping="Wrap" />
+            <CheckBox Content="Enable Eye" IsChecked="{Binding EnableEye, Mode=TwoWay}" />
+            <NumericUpDown Minimum="0" Maximum="1" Increment="0.01" FormatString="0.00" Value="{Binding EyeValue, Mode=TwoWay}" IsEnabled="{Binding EnableEye}" />
+            <Slider Minimum="0" Maximum="1" TickFrequency="0.05" Value="{Binding EyeValue, Mode=TwoWay}" IsEnabled="{Binding EnableEye}" />
             <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6" HorizontalAlignment="Left">
               <Grid Width="300" Height="146" ClipToBounds="True">
                 <Image Source="avares://SkyrimLightingPatcher.App/Assets/eyes0.jpg"
@@ -76,10 +90,11 @@
 
         <Border Grid.Column="1" Classes="panel">
           <StackPanel Spacing="10">
-            <TextBlock Classes="section-title" Text="Body Value" />
-            <TextBlock Foreground="{DynamicResource TextBody}" Text="Soft Light strength for head/body/hands/feet skin shapes." />
-            <NumericUpDown Minimum="0" Maximum="1" Increment="0.01" FormatString="0.00" Value="{Binding BodyValue, Mode=TwoWay}" />
-            <Slider Minimum="0" Maximum="1" TickFrequency="0.05" Value="{Binding BodyValue, Mode=TwoWay}" />
+            <TextBlock Classes="section-title" Text="Body Multiplier" />
+            <TextBlock Foreground="{DynamicResource TextBody}" Text="How much of the original body/skin effect should be shown (0 = none, 1 = unchanged)." TextWrapping="Wrap" />
+            <CheckBox Content="Enable Body" IsChecked="{Binding EnableBody, Mode=TwoWay}" />
+            <NumericUpDown Minimum="0" Maximum="1" Increment="0.01" FormatString="0.00" Value="{Binding BodyValue, Mode=TwoWay}" IsEnabled="{Binding EnableBody}" />
+            <Slider Minimum="0" Maximum="1" TickFrequency="0.05" Value="{Binding BodyValue, Mode=TwoWay}" IsEnabled="{Binding EnableBody}" />
             <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6" HorizontalAlignment="Left">
               <Grid Width="300" Height="146" ClipToBounds="True">
                 <Image Source="avares://SkyrimLightingPatcher.App/Assets/skin0.jpg"
@@ -87,6 +102,25 @@
                 <Image Source="avares://SkyrimLightingPatcher.App/Assets/skin1.jpg"
                        Stretch="UniformToFill"
                        Opacity="{Binding BodyValue}" />
+              </Grid>
+            </Border>
+          </StackPanel>
+        </Border>
+
+        <Border Grid.Column="2" Classes="panel">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="section-title" Text="Other Multiplier" />
+            <TextBlock Foreground="{DynamicResource TextBody}" Text="Optional: include other Soft_Lighting shapes. 0 = none, 1 = unchanged." TextWrapping="Wrap" />
+            <CheckBox Content="Enable Other" IsChecked="{Binding EnableOther, Mode=TwoWay}" />
+            <NumericUpDown Minimum="0" Maximum="1" Increment="0.01" FormatString="0.00" Value="{Binding OtherValue, Mode=TwoWay}" IsEnabled="{Binding EnableOther}" />
+            <Slider Minimum="0" Maximum="1" TickFrequency="0.05" Value="{Binding OtherValue, Mode=TwoWay}" IsEnabled="{Binding EnableOther}" />
+            <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6" HorizontalAlignment="Left">
+              <Grid Width="300" Height="146" ClipToBounds="True">
+                <Image Source="avares://SkyrimLightingPatcher.App/Assets/other0.jpg"
+                       Stretch="UniformToFill" />
+                <Image Source="avares://SkyrimLightingPatcher.App/Assets/other1.jpg"
+                       Stretch="UniformToFill"
+                       Opacity="{Binding OtherValue}" />
               </Grid>
             </Border>
           </StackPanel>
@@ -102,7 +136,7 @@
         </Grid>
       </Border>
 
-      <Grid ColumnDefinitions="*,*,*,*" IsEnabled="{Binding HasConfiguredRoots}" IsVisible="{Binding ShowScanSections}">
+      <Grid ColumnDefinitions="*,*,*,*,*" IsEnabled="{Binding HasConfiguredRoots}" IsVisible="{Binding ShowScanSections}">
         <Border Grid.Column="0" Classes="panel" Margin="0,0,6,0">
           <StackPanel>
             <TextBlock Foreground="{DynamicResource TextLabel}" Text="Files scanned" />
@@ -121,7 +155,13 @@
             <TextBlock FontSize="26" FontWeight="Bold" Text="{Binding PatchableBodyShapes}" />
           </StackPanel>
         </Border>
-        <Border Grid.Column="3" Classes="panel" Margin="6,0,0,0">
+        <Border Grid.Column="3" Classes="panel" Margin="6,0,6,0">
+          <StackPanel>
+            <TextBlock Foreground="{DynamicResource TextLabel}" Text="Patchable Other shapes" />
+            <TextBlock FontSize="26" FontWeight="Bold" Text="{Binding PatchableOtherShapes}" />
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="4" Classes="panel" Margin="6,0,0,0">
           <StackPanel>
             <TextBlock Foreground="{DynamicResource TextLabel}" Text="Errors" />
             <TextBlock FontSize="26" FontWeight="Bold" Text="{Binding ErrorFiles}" />

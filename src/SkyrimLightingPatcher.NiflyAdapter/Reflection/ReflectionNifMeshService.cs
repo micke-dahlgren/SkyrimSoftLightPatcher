@@ -55,7 +55,9 @@ public sealed class ReflectionNifMeshService : INifMeshService
                 BuildShaderMetadata(shader),
                 GetTexturePaths(nifFile, shader),
                 shader.HasSoftlight,
-                GetLightingEffect1(shader)));
+                shader.HasRimlight,
+                GetLightingEffect1(shader),
+                GetLightingEffect2(shader)));
 
             index++;
         }
@@ -96,7 +98,11 @@ public sealed class ReflectionNifMeshService : INifMeshService
                 ?? throw new InvalidOperationException($"Shape '{shapeName}' no longer has a BSLightingShaderProperty.");
             var shader = ResolveShaderBlock(nifFile, shaderCandidate);
 
-            SetLightingEffect1(shader, operation.NewValue);
+            SetLightingEffect1(shader, operation.NewValue1);
+            if (operation.NewValue2.HasValue)
+            {
+                SetLightingEffect2(shader, operation.NewValue2.Value);
+            }
             applied++;
             index++;
         }
@@ -252,6 +258,32 @@ public sealed class ReflectionNifMeshService : INifMeshService
         if (Math.Abs(currentValue - value) > 0.0001f && !propertyWasSet)
         {
             throw new InvalidOperationException("Unable to update LightingEffect1 on the shader block.");
+        }
+    }
+
+    private static float GetLightingEffect2(BSLightingShaderProperty shader)
+    {
+        if (TryGetMemberValue(shader, "LightingEffect2", out float propertyValue) ||
+            TryGetMemberValue(shader, "Lightingeffect2", out propertyValue))
+        {
+            return propertyValue;
+        }
+
+        return GetFieldValue<float>(shader, "_lightingEffect2");
+    }
+
+    private static void SetLightingEffect2(BSLightingShaderProperty shader, float value)
+    {
+        var propertyWasSet =
+            TrySetMemberValue(shader, "LightingEffect2", value) ||
+            TrySetMemberValue(shader, "Lightingeffect2", value);
+
+        SetFieldValue(shader, "_lightingEffect2", value);
+
+        var currentValue = GetLightingEffect2(shader);
+        if (Math.Abs(currentValue - value) > 0.0001f && !propertyWasSet)
+        {
+            throw new InvalidOperationException("Unable to update LightingEffect2 on the shader block.");
         }
     }
 

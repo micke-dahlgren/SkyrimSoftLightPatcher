@@ -56,4 +56,21 @@ public partial class MainWindow : Window
 
         await viewModel.SetOutputDestinationPathAsync(localPath);
     }
+
+    private async void BrowseSkyrimDataFolder_OnClick(object? sender, RoutedEventArgs e)
+    {
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            AllowMultiple = false,
+            Title = "Select Skyrim Data folder",
+        });
+
+        var localPath = folders.FirstOrDefault()?.TryGetLocalPath();
+        if (string.IsNullOrWhiteSpace(localPath))
+        {
+            return;
+        }
+
+        await viewModel.SetSkyrimDataPathAsync(localPath);
+    }
 }

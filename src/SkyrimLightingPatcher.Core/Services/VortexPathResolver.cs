@@ -1,5 +1,6 @@
 using SkyrimLightingPatcher.Core.Interfaces;
 using SkyrimLightingPatcher.Core.Models;
+using Microsoft.Win32;
 
 namespace SkyrimLightingPatcher.Core.Services;
 
@@ -40,6 +41,43 @@ public sealed class VortexPathResolver : IVortexPathResolver
         }
 
         return Task.FromResult<VortexStagingFolder?>(null);
+    }
+
+    public Task<string?> TryResolveSkyrimDataPathAsync(CancellationToken cancellationToken = default)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var registryPaths = new[]
+            {
+                @"SOFTWARE\WOW6432Node\Bethesda Softworks\Skyrim Special Edition",
+                @"SOFTWARE\Bethesda Softworks\Skyrim Special Edition",
+            };
+
+            foreach (var keyPath in registryPaths)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var installPath = Registry.GetValue($@"HKEY_LOCAL_MACHINE\{keyPath}", "Installed Path", null) as string;
+                if (!string.IsNullOrWhiteSpace(installPath))
+                {
+                    var dataPath = Path.Combine(installPath, "Data");
+                    if (Directory.Exists(dataPath))
+                    {
+                        return Task.FromResult<string?>(dataPath);
+                    }
+                }
+            }
+        }
+
+        var commonCandidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Steam", "steamapps", "common", "Skyrim Special Edition", "Data"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Steam", "steamapps", "common", "Skyrim Special Edition", "Data"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "SteamLibrary", "steamapps", "common", "Skyrim Special Edition", "Data"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "SteamLibrary", "steamapps", "common", "Skyrim Special Edition", "Data"),
+        };
+
+        var detected = commonCandidates.FirstOrDefault(Directory.Exists);
+        return Task.FromResult<string?>(detected);
     }
 
     private static VortexStagingFolder? TryResolveFromRoot(string vortexRoot, CancellationToken cancellationToken)

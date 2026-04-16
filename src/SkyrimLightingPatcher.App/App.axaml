@@ -4,7 +4,12 @@
              x:Class="SkyrimLightingPatcher.App.App"
              RequestedThemeVariant="Dark">
   <Application.Styles>
-    <fluent:FluentTheme />
+    <fluent:FluentTheme>
+      <fluent:FluentTheme.Palettes>
+        <fluent:ColorPaletteResources x:Key="Light" Accent="#d6b745" />
+        <fluent:ColorPaletteResources x:Key="Dark" Accent="#d6b745" />
+      </fluent:FluentTheme.Palettes>
+    </fluent:FluentTheme>
     <StyleInclude Source="avares://SkyrimLightingPatcher.App/Styles/Theme.axaml" />
 
     <Style Selector="Window">

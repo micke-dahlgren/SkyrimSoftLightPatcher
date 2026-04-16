@@ -5,15 +5,19 @@ public sealed record PatchCandidate(
     string ShapeKey,
     string ShapeName,
     ShapeKind Kind,
-    float OldValue,
-    float NewValue);
+    float OldValue1,
+    float NewValue1,
+    float? OldValue2,
+    float? NewValue2);
 
 public sealed record ShapePatchOperation(
     string ShapeKey,
     string ShapeName,
     ShapeKind Kind,
-    float OldValue,
-    float NewValue);
+    float OldValue1,
+    float NewValue1,
+    float? OldValue2,
+    float? NewValue2);
 
 public sealed record FilePatchPlan(
     string FilePath,
@@ -34,8 +38,10 @@ public sealed record PatchedShapeRecord(
     string ShapeKey,
     string ShapeName,
     ShapeKind Kind,
-    float OldValue,
-    float NewValue);
+    float OldValue1,
+    float NewValue1,
+    float? OldValue2,
+    float? NewValue2);
 
 public sealed record FilePatchRecord(
     string FilePath,

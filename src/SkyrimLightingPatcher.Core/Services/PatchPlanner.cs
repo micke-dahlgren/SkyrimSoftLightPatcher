@@ -45,7 +45,7 @@ public sealed class PatchPlanner : IPatchPlanner
 
     private static PatchCandidate? CreateCandidate(string filePath, ShapeScanResult scanResult)
     {
-        if (!scanResult.IsPatchCandidate || !scanResult.TargetValue.HasValue)
+        if (!scanResult.IsPatchCandidate || !scanResult.TargetValue1.HasValue)
         {
             return null;
         }
@@ -56,6 +56,8 @@ public sealed class PatchPlanner : IPatchPlanner
             scanResult.Probe.ShapeName,
             scanResult.Kind,
             scanResult.Probe.LightingEffect1,
-            scanResult.TargetValue.Value);
+            scanResult.TargetValue1!.Value,
+            scanResult.TargetValue2.HasValue ? scanResult.Probe.LightingEffect2 : null,
+            scanResult.TargetValue2);
     }
 }

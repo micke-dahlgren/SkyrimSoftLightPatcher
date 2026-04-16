@@ -35,6 +35,7 @@ public partial class MainWindowViewModel : ObservableObject
         vortexPathResolver = new DesignTimeVortexPathResolver();
 
         DetectVortexCommand = new AsyncRelayCommand(DetectVortexAsync, () => !IsBusy);
+        DetectSkyrimDataCommand = new AsyncRelayCommand(DetectSkyrimDataAsync, () => !IsBusy);
         ScanCommand = new AsyncRelayCommand(ScanAsync, CanScan);
         StopScanCommand = new RelayCommand(StopScanAndReset, CanStopScan);
         PatchCommand = new AsyncRelayCommand(PatchAsync, CanPatch);
@@ -58,6 +59,7 @@ public partial class MainWindowViewModel : ObservableObject
         this.vortexPathResolver = vortexPathResolver;
 
         DetectVortexCommand = new AsyncRelayCommand(DetectVortexAsync, () => !IsBusy);
+        DetectSkyrimDataCommand = new AsyncRelayCommand(DetectSkyrimDataAsync, () => !IsBusy);
         ScanCommand = new AsyncRelayCommand(ScanAsync, CanScan);
         StopScanCommand = new RelayCommand(StopScanAndReset, CanStopScan);
         PatchCommand = new AsyncRelayCommand(PatchAsync, CanPatch);
@@ -70,6 +72,7 @@ public partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<ModScanGroupViewModel> ModGroups { get; } = [];
 
     public IAsyncRelayCommand DetectVortexCommand { get; }
+    public IAsyncRelayCommand DetectSkyrimDataCommand { get; }
 
     public IAsyncRelayCommand ScanCommand { get; }
 
@@ -89,13 +92,28 @@ public partial class MainWindowViewModel : ObservableObject
     private string rootPath = string.Empty;
 
     [ObservableProperty]
-    private double eyeValue = 0.5;
+    private double eyeValue = 1.0;
 
     [ObservableProperty]
-    private double bodyValue = 0.3;
+    private bool enableEye = true;
+
+    [ObservableProperty]
+    private double bodyValue = 1.0;
+
+    [ObservableProperty]
+    private bool enableBody = true;
+
+    [ObservableProperty]
+    private bool enableOther;
+
+    [ObservableProperty]
+    private double otherValue = 1.0;
 
     [ObservableProperty]
     private string outputDestinationPath = string.Empty;
+
+    [ObservableProperty]
+    private string skyrimDataPath = string.Empty;
 
     [ObservableProperty]
     private bool isBusy;
@@ -131,6 +149,9 @@ public partial class MainWindowViewModel : ObservableObject
     private int patchableBodyShapes;
 
     [ObservableProperty]
+    private int patchableOtherShapes;
+
+    [ObservableProperty]
     private int errorFiles;
 
     [ObservableProperty]
@@ -157,6 +178,7 @@ public partial class MainWindowViewModel : ObservableObject
     public bool HasRootPath => !string.IsNullOrWhiteSpace(RootPath) && Directory.Exists(RootPath);
 
     public bool HasOutputDestination => !string.IsNullOrWhiteSpace(OutputDestinationPath) && Directory.Exists(OutputDestinationPath);
+    public bool HasSkyrimDataPath => !string.IsNullOrWhiteSpace(SkyrimDataPath) && Directory.Exists(SkyrimDataPath);
 
     public bool HasConfiguredRoots => HasRootPath && HasOutputDestination;
 
@@ -173,6 +195,7 @@ public partial class MainWindowViewModel : ObservableObject
     public bool HasSelectionSummary => !string.IsNullOrWhiteSpace(SelectionSummaryText);
 
     public bool CanEditSettings => HasConfiguredRoots && !IsSettingsLocked;
+    public bool HasAnyEnabledCategory => EnableEye || EnableBody || EnableOther;
 
     public Task InitializeAsync()
     {
@@ -183,15 +206,37 @@ public partial class MainWindowViewModel : ObservableObject
 
         initialized = true;
         RootPath = string.Empty;
-        EyeValue = 0.5;
-        BodyValue = 0.3;
+        EyeValue = 1.0;
+        EnableEye = true;
+        BodyValue = 1.0;
+        EnableBody = true;
+        EnableOther = false;
+        OtherValue = 1.0;
         OutputDestinationPath = string.Empty;
+        SkyrimDataPath = string.Empty;
         CurrentOutputPath = null;
         StatusMessage = "Select a mesh root and output destination, then run Scan.";
         StatusColor = "#A9D7FF";
         hasPatchedInSession = false;
         OnPropertyChanged(nameof(HasPatchOutputVisible));
+        _ = TryAutoDetectSkyrimDataPathAsync();
         return Task.CompletedTask;
+    }
+
+    private async Task TryAutoDetectSkyrimDataPathAsync()
+    {
+        try
+        {
+            var detected = await vortexPathResolver.TryResolveSkyrimDataPathAsync();
+            if (!string.IsNullOrWhiteSpace(detected))
+            {
+                SkyrimDataPath = detected;
+            }
+        }
+        catch
+        {
+            // Keep startup resilient if auto-detection fails.
+        }
     }
 
     public Task SetRootPathAsync(string path)
@@ -213,6 +258,12 @@ public partial class MainWindowViewModel : ObservableObject
         return Task.CompletedTask;
     }
 
+    public Task SetSkyrimDataPathAsync(string path)
+    {
+        SkyrimDataPath = path;
+        return Task.CompletedTask;
+    }
+
     partial void OnRootPathChanged(string value)
     {
         OnPropertyChanged(nameof(HasRootPath));
@@ -228,8 +279,20 @@ public partial class MainWindowViewModel : ObservableObject
         RefreshCommandState();
     }
 
+    partial void OnEnableEyeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(HasAnyEnabledCategory));
+        RefreshCommandState();
+    }
+
     partial void OnBodyValueChanged(double value)
     {
+        RefreshCommandState();
+    }
+
+    partial void OnEnableBodyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(HasAnyEnabledCategory));
         RefreshCommandState();
     }
 
@@ -240,6 +303,23 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(CanEditSettings));
         OnPropertyChanged(nameof(ShowScanSections));
         OnPropertyChanged(nameof(HasScanResults));
+        RefreshCommandState();
+    }
+
+    partial void OnSkyrimDataPathChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasSkyrimDataPath));
+        RefreshCommandState();
+    }
+
+    partial void OnEnableOtherChanged(bool value)
+    {
+        OnPropertyChanged(nameof(HasAnyEnabledCategory));
+        RefreshCommandState();
+    }
+
+    partial void OnOtherValueChanged(double value)
+    {
         RefreshCommandState();
     }
 
@@ -312,7 +392,7 @@ public partial class MainWindowViewModel : ObservableObject
             ResetScanPreview(clearScanStarted: false);
             var progress = new Progress<ScanProgressUpdate>(ApplyProgress);
             var report = await scanService.ScanAsync(
-                new ScanRequest(RootPath, CreatePatchSettings()),
+                new ScanRequest(RootPath, CreatePatchSettings(), HasSkyrimDataPath ? SkyrimDataPath : null),
                 progress,
                 scanCancellationTokenSource.Token);
             currentReport = report;
@@ -320,7 +400,7 @@ public partial class MainWindowViewModel : ObservableObject
             ApplyReport(report);
             await LoadCurrentOutputAsync();
             var baseMessage =
-                $"Scan complete. Found {report.PatchableEyeShapes} patchable eye shape(s) and {report.PatchableBodyShapes} patchable body shape(s) across {report.CandidateFiles} file(s).";
+                $"Scan complete. Found {report.PatchableEyeShapes} patchable eye shape(s), {report.PatchableBodyShapes} patchable body shape(s), and {report.PatchableOtherShapes} patchable other shape(s) across {report.CandidateFiles} file(s).";
             StatusMessage = report.ErrorFiles > 0 && !string.IsNullOrWhiteSpace(report.ScanErrorLogPath)
                 ? $"{baseMessage} Encountered {report.ErrorFiles} error file(s). Error log: {report.ScanErrorLogPath}"
                 : baseMessage;
@@ -357,6 +437,22 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 SetStatusError("No Skyrim SE Vortex staging folder was detected.");
             }
+        });
+    }
+
+    private async Task DetectSkyrimDataAsync()
+    {
+        await RunBusyOperationAsync("Looking for Skyrim Data folder...", async () =>
+        {
+            var dataPath = await vortexPathResolver.TryResolveSkyrimDataPathAsync();
+            if (string.IsNullOrWhiteSpace(dataPath))
+            {
+                SetStatusError("Could not auto-detect Skyrim Data folder.");
+                return;
+            }
+
+            SkyrimDataPath = dataPath;
+            SetStatusInfo($"Detected Skyrim Data folder: {SkyrimDataPath}");
         });
     }
 
@@ -544,7 +640,9 @@ public partial class MainWindowViewModel : ObservableObject
                     {
                         ShapeName = string.IsNullOrWhiteSpace(shape.Probe.ShapeName) ? "(unnamed shape)" : shape.Probe.ShapeName,
                         KindText = shape.Kind.ToString(),
-                        ValueText = $"{shape.Probe.LightingEffect1:0.000} -> {shape.TargetValue!.Value:0.000}",
+                        ValueText = shape.TargetValue2.HasValue
+                            ? $"LE1 {shape.Probe.LightingEffect1:0.000}->{shape.TargetValue1!.Value:0.000}, LE2 {shape.Probe.LightingEffect2:0.000}->{shape.TargetValue2.Value:0.000}"
+                            : $"LE1 {shape.Probe.LightingEffect1:0.000}->{shape.TargetValue1!.Value:0.000}",
                         DecisionText = "Patch candidate",
                         ReasonSummary = string.Join(" ", shape.Reasons),
                     }).ToArray(),
@@ -559,6 +657,7 @@ public partial class MainWindowViewModel : ObservableObject
         FilesScanned = report.FilesScanned;
         PatchableEyeShapes = report.PatchableEyeShapes;
         PatchableBodyShapes = report.PatchableBodyShapes;
+        PatchableOtherShapes = report.PatchableOtherShapes;
         ErrorFiles = report.ErrorFiles;
         HasNoResults = ModGroups.Count == 0;
         EmptyResultsMessage = report.FilesScanned == 0
@@ -570,13 +669,16 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void ApplyProgress(ScanProgressUpdate progress)
     {
+        var totalFiles = Math.Max(1, progress.TotalFiles);
+        var percent = (int)Math.Round(progress.FilesScanned * 100.0 / totalFiles);
         FilesScanned = progress.FilesScanned;
         PatchableEyeShapes = progress.PatchableEyeShapes;
         PatchableBodyShapes = progress.PatchableBodyShapes;
+        PatchableOtherShapes = progress.PatchableOtherShapes;
         ErrorFiles = progress.ErrorFiles;
-        BusyStateText = $"Scanning meshes... {progress.FilesScanned} scanned";
+        BusyStateText = $"Scanning meshes... {progress.FilesScanned}/{progress.TotalFiles} ({percent}%)";
         BusyStateColor = "#A9D7FF";
-        StatusMessage = $"Scanning meshes... {progress.FilesScanned} file(s) scanned";
+        StatusMessage = $"Scanning meshes... {progress.FilesScanned}/{progress.TotalFiles} file(s) scanned ({percent}%).";
         StatusColor = "#A9D7FF";
     }
 
@@ -612,6 +714,7 @@ public partial class MainWindowViewModel : ObservableObject
         FilesScanned = 0;
         PatchableEyeShapes = 0;
         PatchableBodyShapes = 0;
+        PatchableOtherShapes = 0;
         ErrorFiles = 0;
         LatestScanErrorLogPath = null;
         HasNoResults = true;
@@ -686,6 +789,11 @@ public partial class MainWindowViewModel : ObservableObject
 
     private static string GetPreviewGroupName(string rootPath, FileScanResult file, bool isVortexStagingRoot)
     {
+        if (TryGetGameDataMeshCategory(file, out var dataCategory))
+        {
+            return dataCategory;
+        }
+
         if (isVortexStagingRoot && !string.IsNullOrWhiteSpace(file.Source?.SourceModName))
         {
             return file.Source.SourceModName!;
@@ -705,6 +813,11 @@ public partial class MainWindowViewModel : ObservableObject
 
     private static string GetPreviewDisplayPath(string rootPath, FileScanResult file, bool isVortexStagingRoot)
     {
+        if (TryGetGameDataDisplayPath(file, out var dataDisplayPath))
+        {
+            return dataDisplayPath;
+        }
+
         if (file.Source is not null)
         {
             if (!isVortexStagingRoot || string.IsNullOrWhiteSpace(file.Source.SourceModName))
@@ -731,6 +844,59 @@ public partial class MainWindowViewModel : ObservableObject
     private static string GetPreviewSortKey(string rootPath, FileScanResult file, bool isVortexStagingRoot)
     {
         return GetPreviewDisplayPath(rootPath, file, isVortexStagingRoot);
+    }
+
+    private static bool TryGetGameDataMeshCategory(FileScanResult file, out string category)
+    {
+        category = string.Empty;
+        if (file.Source is null ||
+            file.Source.Kind != MeshSourceKind.Archive ||
+            !string.IsNullOrWhiteSpace(file.Source.SourceModName))
+        {
+            return false;
+        }
+
+        var entryPath = NormalizeSlashes(file.Source.ArchiveEntryPath ?? string.Empty);
+        if (!entryPath.StartsWith("meshes\\", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var relativeMeshPath = entryPath["meshes\\".Length..];
+        var topFolder = relativeMeshPath.Split('\\', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(topFolder))
+        {
+            return false;
+        }
+
+        category = $"Data/{topFolder}";
+        return true;
+    }
+
+    private static bool TryGetGameDataDisplayPath(FileScanResult file, out string displayPath)
+    {
+        displayPath = string.Empty;
+        if (file.Source is null ||
+            file.Source.Kind != MeshSourceKind.Archive ||
+            !string.IsNullOrWhiteSpace(file.Source.SourceModName))
+        {
+            return false;
+        }
+
+        var archiveName = Path.GetFileName(file.Source.ArchivePath);
+        if (string.IsNullOrWhiteSpace(archiveName))
+        {
+            return false;
+        }
+
+        var entryPath = NormalizeSlashes(file.Source.ArchiveEntryPath ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(entryPath))
+        {
+            return false;
+        }
+
+        displayPath = $"{archiveName} -> {entryPath}";
+        return true;
     }
 
     private static string TrimLeadingModSegment(string displayPath, string sourceModName)
@@ -761,12 +927,12 @@ public partial class MainWindowViewModel : ObservableObject
 
     private PatchSettings CreatePatchSettings()
     {
-        return new PatchSettings((float)EyeValue, (float)BodyValue).ClampToSafeRange();
+        return new PatchSettings((float)EyeValue, (float)BodyValue, EnableOther, (float)OtherValue, EnableEye, EnableBody).ClampToSafeRange();
     }
 
     private async Task PersistSettingsAsync()
     {
-        await settingsStore.SaveAsync(new AppSettings(string.Empty, new PatchSettings(0.5f, 0.3f)));
+        await settingsStore.SaveAsync(new AppSettings(string.Empty, new PatchSettings(1.0f, 1.0f, false, 1.0f, true, true)));
     }
 
     private async Task<bool> TryDetectAndApplyVortexRootAsync(bool forceStatusMessage)
@@ -785,6 +951,14 @@ public partial class MainWindowViewModel : ObservableObject
                                     StringComparison.OrdinalIgnoreCase);
 
         RootPath = detectedFolder.RootPath;
+        if (!HasSkyrimDataPath)
+        {
+            var detectedDataPath = await vortexPathResolver.TryResolveSkyrimDataPathAsync();
+            if (!string.IsNullOrWhiteSpace(detectedDataPath))
+            {
+                SkyrimDataPath = detectedDataPath;
+            }
+        }
         CurrentOutputPath = null;
         hasPatchedInSession = false;
         OnPropertyChanged(nameof(HasPatchOutputVisible));
@@ -801,7 +975,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     private bool CanScan()
     {
-        return !IsBusy && HasRootPath && HasOutputDestination;
+        return !IsBusy && HasRootPath && HasOutputDestination && HasAnyEnabledCategory;
     }
 
     private bool CanStopScan()
@@ -846,6 +1020,7 @@ public partial class MainWindowViewModel : ObservableObject
     private void RefreshCommandState()
     {
         DetectVortexCommand.NotifyCanExecuteChanged();
+        DetectSkyrimDataCommand.NotifyCanExecuteChanged();
         ScanCommand.NotifyCanExecuteChanged();
         StopScanCommand.NotifyCanExecuteChanged();
         PatchCommand.NotifyCanExecuteChanged();
@@ -879,7 +1054,7 @@ public partial class MainWindowViewModel : ObservableObject
         {
             return Task.FromResult(new AppSettings(
                 @"C:\Users\Example\AppData\Roaming\Vortex\skyrimse\mods",
-                new PatchSettings(0.5f, 0.3f)));
+                new PatchSettings(1.0f, 1.0f, false, 1.0f, true, true)));
         }
 
         public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
@@ -908,10 +1083,13 @@ public partial class MainWindowViewModel : ObservableObject
                                 new ShaderMetadata("EnvironmentMap", ["Soft_Lighting"]),
                                 [@"textures\actors\character\eyes\blueeye.dds"],
                                 true,
-                                0.20f),
+                                false,
+                                0.20f,
+                                0.00f),
                             ShapeKind.Eye,
                             true,
                             request.Settings.EyeValue,
+                            null,
                             "Eye",
                             ["Matched eye texture directory.", "Eligible for patching."]),
                     ]),
@@ -926,17 +1104,20 @@ public partial class MainWindowViewModel : ObservableObject
                                 new ShaderMetadata("Face", ["Soft_Lighting"]),
                                 [@"textures\actors\character\femalebody_1.dds"],
                                 true,
-                                0.15f),
+                                false,
+                                0.15f,
+                                0.00f),
                             ShapeKind.Body,
                             true,
                             request.Settings.BodyValue,
+                            null,
                             "Body",
                             ["Matched skin-like texture path.", "Eligible for patching."]),
                     ]),
             ];
 
-            progress?.Report(new ScanProgressUpdate(files[0].FilePath, 1, 1, 1, 0, 1, 0));
-            progress?.Report(new ScanProgressUpdate(files[1].FilePath, 2, 2, 1, 1, 2, 0));
+            progress?.Report(new ScanProgressUpdate(files[0].FilePath, 1, 2, 1, 1, 0, 0, 1, 0));
+            progress?.Report(new ScanProgressUpdate(files[1].FilePath, 2, 2, 2, 1, 1, 0, 2, 0));
 
             return Task.FromResult(ScanReport.Create(request, files));
         }
@@ -1001,6 +1182,11 @@ public partial class MainWindowViewModel : ObservableObject
             return Task.FromResult<VortexStagingFolder?>(new VortexStagingFolder(
                 @"C:\Users\Example\AppData\Roaming\Vortex\skyrimse\mods",
                 "Detected Vortex Skyrim SE staging folder."));
+        }
+
+        public Task<string?> TryResolveSkyrimDataPathAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<string?>(@"C:\Games\Skyrim Special Edition\Data");
         }
     }
 }

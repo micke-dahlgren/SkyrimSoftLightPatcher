@@ -2,15 +2,25 @@ using System.Collections.ObjectModel;
 
 namespace SkyrimLightingPatcher.Core.Models;
 
-public sealed record PatchSettings(float EyeValue, float BodyValue)
+public sealed record PatchSettings(
+    float EyeValue,
+    float BodyValue,
+    bool EnableOther = false,
+    float OtherValue = 0.15f,
+    bool EnableEye = true,
+    bool EnableBody = true)
 {
-    public static PatchSettings Default { get; } = new(1.0f, 1.0f);
+    public static PatchSettings Default { get; } = new(1.0f, 1.0f, false, 0.15f, true, true);
 
     public PatchSettings ClampToSafeRange()
     {
         return new PatchSettings(
             Math.Clamp(EyeValue, 0.0f, 1.0f),
-            Math.Clamp(BodyValue, 0.0f, 1.0f));
+            Math.Clamp(BodyValue, 0.0f, 1.0f),
+            EnableOther,
+            Math.Clamp(OtherValue, 0.0f, 1.0f),
+            EnableEye,
+            EnableBody);
     }
 }
 
@@ -19,7 +29,7 @@ public sealed record AppSettings(string? LastRootPath, PatchSettings PatchSettin
     public static AppSettings Default { get; } = new(null, PatchSettings.Default);
 }
 
-public sealed record ScanRequest(string RootPath, PatchSettings Settings);
+public sealed record ScanRequest(string RootPath, PatchSettings Settings, string? SkyrimDataPath = null);
 
 public sealed record VortexStagingFolder(string RootPath, string Source);
 
@@ -42,9 +52,11 @@ public sealed record MeshSource(
 public sealed record ScanProgressUpdate(
     string CurrentFilePath,
     int FilesScanned,
+    int TotalFiles,
     int CandidateFiles,
     int PatchableEyeShapes,
     int PatchableBodyShapes,
+    int PatchableOtherShapes,
     int PatchableShapes,
     int ErrorFiles);
 
@@ -60,6 +72,7 @@ public enum ShapeKind
     Ignore = 0,
     Eye = 1,
     Body = 2,
+    Other = 3,
 }
 
 public sealed record ShaderMetadata(string? ShaderType, IReadOnlyList<string> Flags)
@@ -74,7 +87,22 @@ public sealed record NifShapeProbe(
     ShaderMetadata Shader,
     IReadOnlyList<string> TexturePaths,
     bool HasSoftLighting,
-    float LightingEffect1);
+    bool HasRimLighting,
+    float LightingEffect1,
+    float LightingEffect2)
+{
+    public NifShapeProbe(
+        string FilePath,
+        string ShapeKey,
+        string ShapeName,
+        ShaderMetadata Shader,
+        IReadOnlyList<string> TexturePaths,
+        bool HasSoftLighting,
+        float LightingEffect1)
+        : this(FilePath, ShapeKey, ShapeName, Shader, TexturePaths, HasSoftLighting, false, LightingEffect1, 0.0f)
+    {
+    }
+}
 
 public sealed record ShapeClassification(ShapeKind Kind, string Decision, IReadOnlyList<string> Reasons)
 {
@@ -88,9 +116,24 @@ public sealed record ShapeScanResult(
     NifShapeProbe Probe,
     ShapeKind Kind,
     bool IsPatchCandidate,
-    float? TargetValue,
+    float? TargetValue1,
+    float? TargetValue2,
     string Decision,
-    IReadOnlyList<string> Reasons);
+    IReadOnlyList<string> Reasons)
+{
+    public float? TargetValue => TargetValue1;
+
+    public ShapeScanResult(
+        NifShapeProbe Probe,
+        ShapeKind Kind,
+        bool IsPatchCandidate,
+        float? TargetValue,
+        string Decision,
+        IReadOnlyList<string> Reasons)
+        : this(Probe, Kind, IsPatchCandidate, TargetValue, null, Decision, Reasons)
+    {
+    }
+}
 
 public sealed record FileScanResult(
     string FilePath,
@@ -113,6 +156,7 @@ public sealed record ScanReport(
     int CandidateFiles,
     int PatchableEyeShapes,
     int PatchableBodyShapes,
+    int PatchableOtherShapes,
     int PatchableShapes,
     int ErrorFiles,
     int SkippedShapes,
@@ -122,6 +166,7 @@ public sealed record ScanReport(
     {
         var patchableEyeShapes = 0;
         var patchableBodyShapes = 0;
+        var patchableOtherShapes = 0;
         var patchableShapes = 0;
         var errorFiles = 0;
         var skippedShapes = 0;
@@ -152,6 +197,9 @@ public sealed record ScanReport(
                         case ShapeKind.Body:
                             patchableBodyShapes++;
                             break;
+                        case ShapeKind.Other:
+                            patchableOtherShapes++;
+                            break;
                     }
 
                     patchableShapes++;
@@ -170,6 +218,7 @@ public sealed record ScanReport(
             candidateFiles,
             patchableEyeShapes,
             patchableBodyShapes,
+            patchableOtherShapes,
             patchableShapes,
             errorFiles,
             skippedShapes,

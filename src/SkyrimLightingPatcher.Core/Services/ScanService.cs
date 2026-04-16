@@ -40,10 +40,12 @@ public sealed class ScanService : IScanService
         var candidateFiles = 0;
         var patchableEyeShapes = 0;
         var patchableBodyShapes = 0;
+        var patchableOtherShapes = 0;
         var patchableShapes = 0;
         var errorFiles = 0;
         var scanErrors = new List<ScanErrorEntry>();
-        var sources = await scanFileResolver.ResolveFilePathsAsync(request.RootPath, cancellationToken).ConfigureAwait(false);
+        var sources = await scanFileResolver.ResolveFilePathsAsync(request.RootPath, request.SkyrimDataPath, cancellationToken).ConfigureAwait(false);
+        var totalFiles = sources.Count;
 
         foreach (var source in sources)
         {
@@ -78,15 +80,18 @@ public sealed class ScanService : IScanService
                 ref candidateFiles,
                 ref patchableEyeShapes,
                 ref patchableBodyShapes,
+                ref patchableOtherShapes,
                 ref patchableShapes,
                 ref errorFiles);
 
             progress?.Report(new ScanProgressUpdate(
                 source.DisplayPath,
                 filesScanned,
+                totalFiles,
                 candidateFiles,
                 patchableEyeShapes,
                 patchableBodyShapes,
+                patchableOtherShapes,
                 patchableShapes,
                 errorFiles));
         }
@@ -131,6 +136,7 @@ public sealed class ScanService : IScanService
         ref int candidateFiles,
         ref int patchableEyeShapes,
         ref int patchableBodyShapes,
+        ref int patchableOtherShapes,
         ref int patchableShapes,
         ref int errorFiles)
     {
@@ -159,6 +165,9 @@ public sealed class ScanService : IScanService
                     case ShapeKind.Body:
                         patchableBodyShapes++;
                         break;
+                    case ShapeKind.Other:
+                        patchableOtherShapes++;
+                        break;
                 }
 
                 patchableShapes++;
@@ -169,19 +178,33 @@ public sealed class ScanService : IScanService
     private ShapeScanResult CreateScanResult(NifShapeProbe probe, PatchSettings settings)
     {
         var classification = shapeClassifier.Classify(probe);
-        float? target = classification.Kind switch
+        float? multiplier = classification.Kind switch
         {
-            ShapeKind.Eye => settings.EyeValue,
-            ShapeKind.Body => settings.BodyValue,
+            ShapeKind.Eye when settings.EnableEye => settings.EyeValue,
+            ShapeKind.Body when settings.EnableBody => settings.BodyValue,
+            ShapeKind.Other when settings.EnableOther => settings.OtherValue,
             _ => null,
         };
 
-        var isPatchCandidate = target.HasValue &&
-                               probe.HasSoftLighting &&
-                               Math.Abs(probe.LightingEffect1 - target.Value) > 0.0001f;
+        float? target1 = null;
+        float? target2 = null;
+        if (multiplier.HasValue && probe.HasSoftLighting)
+        {
+            target1 = probe.LightingEffect1 * multiplier.Value;
+            if (probe.HasRimLighting)
+            {
+                target2 = probe.LightingEffect2 * multiplier.Value;
+            }
+        }
+
+        var needsEffect1Change = target1.HasValue &&
+                                 Math.Abs(probe.LightingEffect1 - target1.Value) > 0.0001f;
+        var needsEffect2Change = target2.HasValue &&
+                                 Math.Abs(probe.LightingEffect2 - target2.Value) > 0.0001f;
+        var isPatchCandidate = needsEffect1Change || needsEffect2Change;
 
         var reasons = new List<string>(classification.Reasons);
-        if (!target.HasValue)
+        if (!multiplier.HasValue)
         {
             reasons.Add("Shape ignored by classifier.");
         }
@@ -191,7 +214,7 @@ public sealed class ScanService : IScanService
         }
         else if (!isPatchCandidate)
         {
-            reasons.Add("Lighting effect already matches the requested value.");
+            reasons.Add("Lighting effect(s) already match the requested multiplier.");
         }
         else
         {
@@ -202,7 +225,8 @@ public sealed class ScanService : IScanService
             probe,
             classification.Kind,
             isPatchCandidate,
-            target,
+            target1,
+            target2,
             classification.Decision,
             reasons);
     }

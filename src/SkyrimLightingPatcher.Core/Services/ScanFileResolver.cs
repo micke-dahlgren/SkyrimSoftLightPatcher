@@ -15,11 +15,11 @@ public sealed class ScanFileResolver : IScanFileResolver
     private readonly Dictionary<string, BsaArchiveIndex> archiveIndexCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim archiveCacheLock = new(1, 1);
 
-    public async Task<IReadOnlyList<MeshSource>> ResolveFilePathsAsync(string rootPath, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<MeshSource>> ResolveFilePathsAsync(string rootPath, string? skyrimDataPath = null, CancellationToken cancellationToken = default)
     {
         var winners = new Dictionary<string, MeshSource>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var archiveSource in await ResolveArchiveSourcesAsync(rootPath, cancellationToken).ConfigureAwait(false))
+        foreach (var archiveSource in await ResolveArchiveSourcesAsync(rootPath, skyrimDataPath, cancellationToken).ConfigureAwait(false))
         {
             cancellationToken.ThrowIfCancellationRequested();
             winners[PathUtility.NormalizeForComparison(archiveSource.OutputRelativePath)] = archiveSource;
@@ -90,7 +90,7 @@ public sealed class ScanFileResolver : IScanFileResolver
             .ToArray();
     }
 
-    private async Task<IReadOnlyList<MeshSource>> ResolveArchiveSourcesAsync(string rootPath, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<MeshSource>> ResolveArchiveSourcesAsync(string rootPath, string? skyrimDataPath, CancellationToken cancellationToken)
     {
         var activeVortexSources = await TryResolveActiveVortexSourcesAsync(rootPath, cancellationToken).ConfigureAwait(false);
         var archiveCandidates = new List<ArchiveCandidate>();
@@ -104,6 +104,14 @@ public sealed class ScanFileResolver : IScanFileResolver
             archiveCandidates.AddRange(
                 Directory.EnumerateFiles(deploymentRoot, "*.bsa", SearchOption.TopDirectoryOnly)
                     .Select(path => new ArchiveCandidate(path, deploymentRoot, ArchiveCandidateOrigin.DeployedData)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(skyrimDataPath) && Directory.Exists(skyrimDataPath))
+        {
+            archiveCandidates.AddRange(
+                Directory.EnumerateFiles(skyrimDataPath, "*.bsa", SearchOption.TopDirectoryOnly)
+                    .Where(static path => Path.GetFileName(path).Contains("meshes", StringComparison.OrdinalIgnoreCase))
+                    .Select(path => new ArchiveCandidate(path, skyrimDataPath, ArchiveCandidateOrigin.GameData)));
         }
 
         var archives = archiveCandidates
@@ -219,6 +227,7 @@ public sealed class ScanFileResolver : IScanFileResolver
         var archiveDisplayPath = archive.Origin switch
         {
             ArchiveCandidateOrigin.DeployedData => BuildDeployedArchiveDisplayPath(archive.DisplayRootPath, archive.ArchivePath),
+            ArchiveCandidateOrigin.GameData => BuildDeployedArchiveDisplayPath(archive.DisplayRootPath, archive.ArchivePath),
             _ => PathUtility.GetRelativeOrFileName(rootPath, archive.ArchivePath),
         };
         var displayPath = $"{archiveDisplayPath} -> {entryPath}";
@@ -662,6 +671,7 @@ public sealed class ScanFileResolver : IScanFileResolver
     {
         Staging = 0,
         DeployedData = 1,
+        GameData = 2,
     }
 
     private sealed record ArchiveCandidate(string ArchivePath, string DisplayRootPath, ArchiveCandidateOrigin Origin);

@@ -89,7 +89,7 @@ public sealed class ShapeClassifier : IShapeClassifier
         }
 
         reasons.Add("No strong eye or body signal matched.");
-        return ShapeClassification.Ignore("Ignored", reasons.ToArray());
+        return new ShapeClassification(ShapeKind.Other, "Other", reasons.ToArray());
     }
 
     private static bool TryClassifyEye(
