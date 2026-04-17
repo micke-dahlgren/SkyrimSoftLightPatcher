@@ -6,6 +6,7 @@ namespace SkyrimLightingPatcher.Core.Services;
 
 internal sealed partial class BsaArchiveReader
 {
+    // Raw LZ4 block decoder used by Skyrim BSA payloads.
     private static class Lz4BlockDecoder
     {
         public static byte[] Decode(ReadOnlySpan<byte> input, int outputLength)
@@ -133,6 +134,7 @@ internal sealed partial class BsaArchiveReader
         }
     }
 
+    // LZ4 frame decoder with support for dependent blocks (back-references across blocks).
     private static class Lz4FrameDecoder
     {
         public static byte[] Decode(ReadOnlySpan<byte> input, int expectedLength)

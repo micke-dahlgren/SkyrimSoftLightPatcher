@@ -7,6 +7,10 @@ using SkyrimLightingPatcher.Core.Utilities;
 
 namespace SkyrimLightingPatcher.Core.Services;
 
+/// <summary>
+/// Resolves which mesh sources should be scanned and patched.
+/// It merges loose files and archive entries and applies conflict winner rules.
+/// </summary>
 public sealed partial class ScanFileResolver : IScanFileResolver
 {
     private const string StagingMarkerFileName = "__vortex_staging_folder";
@@ -15,6 +19,10 @@ public sealed partial class ScanFileResolver : IScanFileResolver
     private readonly Dictionary<string, BsaArchiveIndex> archiveIndexCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim archiveCacheLock = new(1, 1);
 
+    /// <summary>
+    /// Finds candidate mesh sources under the selected root, then chooses winners by output-relative path.
+    /// Loose files are applied after archives so they override archive-backed entries.
+    /// </summary>
     public async Task<IReadOnlyList<MeshSource>> ResolveFilePathsAsync(string rootPath, string? skyrimDataPath = null, CancellationToken cancellationToken = default)
     {
         var winners = new Dictionary<string, MeshSource>(StringComparer.OrdinalIgnoreCase);
@@ -36,6 +44,10 @@ public sealed partial class ScanFileResolver : IScanFileResolver
             .ToArray();
     }
 
+    /// <summary>
+    /// Returns a readable local path for a source.
+    /// Loose sources return their original path; archive sources are extracted to a cache folder.
+    /// </summary>
     public async Task<string> MaterializeSourceAsync(MeshSource source, CancellationToken cancellationToken = default)
     {
         if (source.Kind == MeshSourceKind.Loose)

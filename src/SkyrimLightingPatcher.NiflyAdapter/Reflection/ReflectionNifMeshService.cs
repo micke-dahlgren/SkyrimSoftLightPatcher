@@ -6,13 +6,23 @@ using SkyrimLightingPatcher.Core.Models;
 
 namespace SkyrimLightingPatcher.NiflyAdapter.Reflection;
 
+/// <summary>
+/// Bridges the app's mesh abstraction to NiflySharp.
+/// Uses reflection fallbacks to tolerate minor API/name differences between Nifly builds.
+/// </summary>
 public sealed class ReflectionNifMeshService : INifMeshService
 {
+    /// <summary>
+    /// Reads patch-relevant shape/shader data from a NIF file.
+    /// </summary>
     public Task<IReadOnlyList<NifShapeProbe>> ProbeAsync(string filePath, CancellationToken cancellationToken = default)
     {
         return Task.Run(() => ProbeCore(filePath, cancellationToken), cancellationToken);
     }
 
+    /// <summary>
+    /// Applies planned shape operations and writes a patched copy to <paramref name="outputPath"/>.
+    /// </summary>
     public Task WritePatchedFileAsync(
         string sourcePath,
         string outputPath,
@@ -237,6 +247,7 @@ public sealed class ReflectionNifMeshService : INifMeshService
 
     private static BSLightingShaderProperty ResolveShaderBlock(NifFile nifFile, BSLightingShaderProperty shader)
     {
+        // Re-resolve through block index when possible so writes target the canonical block instance.
         if (nifFile.GetBlockIndex(shader, out var blockIndex))
         {
             return nifFile.GetBlock<BSLightingShaderProperty>(blockIndex) ?? shader;
@@ -247,6 +258,7 @@ public sealed class ReflectionNifMeshService : INifMeshService
 
     private static float GetLightingEffect1(BSLightingShaderProperty shader)
     {
+        // Nifly builds may expose different member casing, so probe both spellings before raw-field fallback.
         if (TryGetMemberValue(shader, "LightingEffect1", out float propertyValue) ||
             TryGetMemberValue(shader, "Lightingeffect1", out propertyValue))
         {
@@ -273,6 +285,7 @@ public sealed class ReflectionNifMeshService : INifMeshService
 
     private static float GetLightingEffect2(BSLightingShaderProperty shader)
     {
+        // Nifly builds may expose different member casing, so probe both spellings before raw-field fallback.
         if (TryGetMemberValue(shader, "LightingEffect2", out float propertyValue) ||
             TryGetMemberValue(shader, "Lightingeffect2", out propertyValue))
         {

@@ -9,6 +9,7 @@ namespace SkyrimLightingPatcher.Core.Services;
 
 public sealed partial class ScanFileResolver
 {
+    // Mirrors game load-order precedence for archive selection when plugin names align.
     private (int Group, int PluginIndex, string RelativePath) GetArchivePriority(string rootPath, string archivePath)
     {
         var relativePath = PathUtility.GetRelativeOrFileName(rootPath, archivePath);
@@ -99,6 +100,8 @@ public sealed partial class ScanFileResolver
         }
     }
 
+    // Minimal parser for the subset of Vortex deployment MessagePack fields we need.
+    // Keeping it local avoids taking an external dependency in the runtime patcher.
     private ref struct MessagePackReader
     {
         private ReadOnlySpan<byte> data;

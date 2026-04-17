@@ -4,12 +4,18 @@ using System.Text;
 
 namespace SkyrimLightingPatcher.Core.Services;
 
+/// <summary>
+/// Reads BSA metadata and extracts entries (including compressed payloads) needed by the patcher.
+/// </summary>
 internal sealed partial class BsaArchiveReader
 {
     private const uint DefaultCompressionToggleBit = 1u << 30;
     private const uint MeshFileFlag = 0x1;
     private const uint Lz4FrameMagic = 0x184D2204;
 
+    /// <summary>
+    /// Builds an index of archive entries and flags whether the archive contains mesh content.
+    /// </summary>
     public BsaArchiveIndex ReadIndex(string archivePath)
     {
         using var stream = File.OpenRead(archivePath);
@@ -126,6 +132,9 @@ internal sealed partial class BsaArchiveReader
         return new BsaArchiveIndex(archivePath, checked((int)version), containsMeshes, entries);
     }
 
+    /// <summary>
+    /// Extracts the raw bytes for one archive entry, decompressing when required.
+    /// </summary>
     public byte[] Extract(BsaArchiveEntry entry)
     {
         using var stream = File.OpenRead(entry.ArchivePath);
