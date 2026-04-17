@@ -69,4 +69,48 @@ public sealed class OutputModServiceTests
 
         Assert.False(Directory.Exists(outputPath));
     }
+
+    [Fact]
+    public async Task DeleteAsync_ThrowsForUnmanagedOutputFolder()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-output-tests", Guid.NewGuid().ToString("N"));
+        var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
+        var unmanagedOutputPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-unmanaged", Guid.NewGuid().ToString("N"));
+        var archivePath = Path.Combine(rootPath, "Soft Light Mesh Patcher Output.zip");
+        using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+        Directory.CreateDirectory(rootPath);
+        Directory.CreateDirectory(unmanagedOutputPath);
+
+        var store = new BackupStore();
+        var manifest = new PatchRunManifest(
+            Guid.NewGuid().ToString("N"),
+            rootPath,
+            unmanagedOutputPath,
+            archivePath,
+            "Soft Light Mesh Patcher Output",
+            false,
+            DateTimeOffset.Now,
+            new PatchSettings(0.4f, 0.1f),
+            []);
+        await store.WriteManifestAsync(manifest);
+
+        var service = new OutputModService(store);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync(manifest.RunId));
+
+        Assert.Contains("unmanaged output folder", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(Directory.Exists(unmanagedOutputPath));
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ThrowsWhenRunDoesNotExist()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-output-tests", Guid.NewGuid().ToString("N"));
+        var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
+        using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+        Directory.CreateDirectory(rootPath);
+
+        var service = new OutputModService(new BackupStore());
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteAsync("missing-run"));
+        Assert.Contains("was not found", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }

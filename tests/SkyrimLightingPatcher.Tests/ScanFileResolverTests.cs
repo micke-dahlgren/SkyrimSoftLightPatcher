@@ -213,6 +213,55 @@ public sealed class ScanFileResolverTests
         Assert.Contains(Path.GetFileName(deploymentDataRoot), file.DisplayPath, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task MaterializeSourceAsync_ArchiveSource_ExtractsAndReusesCachedFile()
+    {
+        var rootPath = CreateTempDirectory();
+        var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
+        using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+
+        var sourceFile = Path.Combine(TestDataRoot, "eye_example.nif");
+        var archivePath = Path.Combine(rootPath, "Skyrim - Meshes0.bsa");
+        await TestBsaArchiveBuilder.CreateFromFilesAsync(
+            archivePath,
+            (@"meshes\actors\character\eyes\eye_example.nif", sourceFile));
+
+        var resolver = new ScanFileResolver();
+        var archiveSource = Assert.Single(await resolver.ResolveFilePathsAsync(rootPath));
+        Assert.Equal(MeshSourceKind.Archive, archiveSource.Kind);
+
+        var firstPath = await resolver.MaterializeSourceAsync(archiveSource);
+        var secondPath = await resolver.MaterializeSourceAsync(archiveSource);
+
+        Assert.Equal(firstPath, secondPath);
+        Assert.True(File.Exists(firstPath));
+        Assert.NotEqual(archivePath, firstPath);
+        Assert.Equal(await File.ReadAllBytesAsync(sourceFile), await File.ReadAllBytesAsync(firstPath));
+    }
+
+    [Fact]
+    public async Task MaterializeSourceAsync_ArchiveSource_ThrowsWhenEntryIsMissing()
+    {
+        var rootPath = CreateTempDirectory();
+        var archivePath = Path.Combine(rootPath, "Skyrim - Meshes0.bsa");
+        await TestBsaArchiveBuilder.CreateFromFilesAsync(
+            archivePath,
+            (@"meshes\actors\character\eyes\eye_example.nif", Path.Combine(TestDataRoot, "eye_example.nif")));
+
+        var resolver = new ScanFileResolver();
+        var missingSource = new MeshSource(
+            $"archive|{Path.GetFullPath(archivePath)}|meshes\\actors\\character\\eyes\\missing.nif",
+            "Skyrim - Meshes0.bsa -> meshes\\actors\\character\\eyes\\missing.nif",
+            @"meshes\actors\character\eyes\missing.nif",
+            string.Empty,
+            MeshSourceKind.Archive,
+            null,
+            archivePath,
+            @"meshes\actors\character\eyes\missing.nif");
+
+        await Assert.ThrowsAsync<FileNotFoundException>(() => resolver.MaterializeSourceAsync(missingSource));
+    }
+
     private static string CreateTempDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), "skyrim-lighting-resolver-tests", Guid.NewGuid().ToString("N"));
