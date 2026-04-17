@@ -19,8 +19,8 @@
 
     <Style Selector="Border.panel">
       <Setter Property="Background" Value="{DynamicResource SurfaceBackgroundLight}" />
-      <Setter Property="BorderBrush" Value="{DynamicResource Border}" />
-      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
       <Setter Property="CornerRadius" Value="8" />
       <Setter Property="Padding" Value="14" />
     </Style>

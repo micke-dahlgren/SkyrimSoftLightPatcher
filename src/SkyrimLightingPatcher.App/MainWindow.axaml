@@ -20,22 +20,33 @@
         <StackPanel Spacing="8">
           <TextBlock FontSize="28" FontWeight="Bold" Foreground="{DynamicResource TextHeader}" Text="Soft Light Mesh Patcher" />
           <TextBlock Foreground="{DynamicResource TextBody}" TextWrapping="Wrap"
-                     Text="Scan a Skyrim SE mesh folder, preview eye/body shader hits, then generate a standalone output mod with patched meshes for shapes that already have Soft_Lighting enabled." />
+                     Text="Generate a patch-mod that removes the effects from meshes that make them glow in shadows." />
         </StackPanel>
       </Border>
 
-      <Border Classes="panel">
+      <Border Classes="panel" IsEnabled="{Binding IsFolderSectionEnabled}">
         <StackPanel Spacing="10">
           <TextBlock Classes="section-title" Text="Folders" />
 
           <StackPanel Spacing="8">
             <Grid ColumnDefinitions="Auto,*">
-              <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Source root:" />
-              <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding RootPath}" Foreground="{DynamicResource TextBody}" TextWrapping="Wrap" />
+              <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Mod staging folder:" />
+              <TextBlock Grid.Column="1"
+                         VerticalAlignment="Center"
+                         Text="{Binding RootPath}"
+                         Foreground="{DynamicResource TextBody}"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding HasRootPath}" />
+              <TextBlock Grid.Column="1"
+                         VerticalAlignment="Center"
+                         Text="Choose a source mesh folder to begin scanning."
+                         Foreground="#A9D7FF"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding HasRootPath, Converter={x:Static BoolConverters.Not}}" />
             </Grid>
             <Grid ColumnDefinitions="Auto,Auto,*">
               <Button Grid.Column="0" Command="{Binding DetectVortexCommand}" Content="Use Vortex" />
-              <Button Grid.Column="1" Margin="8,0,0,0" Click="BrowseRootFolder_OnClick" Content="Browse" />
+              <Button Grid.Column="1" Margin="8,0,0,0" Click="BrowseRootFolder_OnClick" Content="Choose folder" />
             </Grid>
           </StackPanel>
 
@@ -43,12 +54,12 @@
 
           <StackPanel Spacing="8">
             <Grid ColumnDefinitions="Auto,*">
-              <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Skyrim Data root:" />
+              <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Skyrim Data folder:" />
               <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding SkyrimDataPath}" Foreground="{DynamicResource TextBody}" TextWrapping="Wrap" />
             </Grid>
             <Grid ColumnDefinitions="Auto,Auto,*">
               <Button Grid.Column="0" Command="{Binding DetectSkyrimDataCommand}" Content="Use Skyrim Data" />
-              <Button Grid.Column="1" Margin="8,0,0,0" Click="BrowseSkyrimDataFolder_OnClick" Content="Browse" />
+              <Button Grid.Column="1" Margin="8,0,0,0" Click="BrowseSkyrimDataFolder_OnClick" Content="Choose folder" />
             </Grid>
           </StackPanel>
 
@@ -56,11 +67,22 @@
 
           <StackPanel Spacing="8">
             <Grid ColumnDefinitions="Auto,*">
-              <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Destination root:" />
-              <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding OutputDestinationPath}" Foreground="{DynamicResource TextBody}" TextWrapping="Wrap" />
+              <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Patch Destination Folder:" />
+              <TextBlock Grid.Column="1"
+                         VerticalAlignment="Center"
+                         Text="{Binding OutputDestinationPath}"
+                         Foreground="{DynamicResource TextBody}"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding HasOutputDestination}" />
+              <TextBlock Grid.Column="1"
+                         VerticalAlignment="Center"
+                         Text="Choose where the generated patch output should be saved."
+                         Foreground="#A9D7FF"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding HasOutputDestination, Converter={x:Static BoolConverters.Not}}" />
             </Grid>
             <Grid ColumnDefinitions="Auto,Auto,*">
-              <Button Grid.Column="0" Click="SetOutputDestination_OnClick" Content="Set output destination" />
+              <Button Grid.Column="0" Click="SetOutputDestination_OnClick" Content="Choose folder" />
               <Button Grid.Column="1" Margin="8,0,0,0" Command="{Binding OpenErrorLogCommand}" Content="Open Error Log"
                       HorizontalAlignment="Left" VerticalAlignment="Center" IsVisible="{Binding HasScanErrorLog}" />
             </Grid>
@@ -69,12 +91,12 @@
       </Border>
 
       <Grid ColumnDefinitions="*,*,*" IsEnabled="{Binding CanEditSettings}" IsVisible="{Binding HasConfiguredRoots}">
-        <Border Grid.Column="0" Classes="panel">
+        <Border Grid.Column="0" Classes="panel" Margin="0,0,8,0">
           <StackPanel Spacing="10">
             <TextBlock Classes="section-title" Text="Eye" />
-            <TextBlock Foreground="{DynamicResource TextBody}" Text="Patch eye shapes." TextWrapping="Wrap" />
-            <CheckBox Content="Patch Eye" IsChecked="{Binding EnableEye, Mode=TwoWay}" />
-            <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6" HorizontalAlignment="Left">
+            <TextBlock Foreground="{DynamicResource TextBody}" Text="Scan for eye shapes." TextWrapping="Wrap" />
+            <CheckBox Content="Scan for Eyes" IsChecked="{Binding EnableEye, Mode=TwoWay}" />
+            <Border CornerRadius="6" HorizontalAlignment="Left">
               <Grid Width="300" Height="146" ClipToBounds="True">
                 <Image Source="avares://SkyrimLightingPatcher.App/Assets/eyes0.jpg"
                        Stretch="UniformToFill"
@@ -87,12 +109,12 @@
           </StackPanel>
         </Border>
 
-        <Border Grid.Column="1" Classes="panel">
+        <Border Grid.Column="1" Classes="panel" Margin="4,0,4,0">
           <StackPanel Spacing="10">
             <TextBlock Classes="section-title" Text="Body" />
-            <TextBlock Foreground="{DynamicResource TextBody}" Text="Patch body/head/hands/feet skin shapes." TextWrapping="Wrap" />
-            <CheckBox Content="Patch Body" IsChecked="{Binding EnableBody, Mode=TwoWay}" />
-            <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6" HorizontalAlignment="Left">
+            <TextBlock Foreground="{DynamicResource TextBody}" Text="Scan for body/head/hands/feet skin shapes." TextWrapping="Wrap" />
+            <CheckBox Content="Scan for Body" IsChecked="{Binding EnableBody, Mode=TwoWay}" />
+            <Border CornerRadius="6" HorizontalAlignment="Left">
               <Grid Width="300" Height="146" ClipToBounds="True">
                 <Image Source="avares://SkyrimLightingPatcher.App/Assets/skin0.jpg"
                        Stretch="UniformToFill"
@@ -105,12 +127,12 @@
           </StackPanel>
         </Border>
 
-        <Border Grid.Column="2" Classes="panel">
+        <Border Grid.Column="2" Classes="panel" Margin="8,0,0,0">
           <StackPanel Spacing="10">
             <TextBlock Classes="section-title" Text="Other" />
-            <TextBlock Foreground="{DynamicResource TextBody}" Text="Patch other Soft_Lighting shapes (animals, flora, etc)." TextWrapping="Wrap" />
-            <CheckBox Content="Patch Other" IsChecked="{Binding EnableOther, Mode=TwoWay}" />
-            <Border BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="6" HorizontalAlignment="Left">
+            <TextBlock Foreground="{DynamicResource TextBody}" Text="Scan for other Soft_Lighting shapes (animals, flora, etc)." TextWrapping="Wrap" />
+            <CheckBox Content="Scan for Other" IsChecked="{Binding EnableOther, Mode=TwoWay}" />
+            <Border CornerRadius="6" HorizontalAlignment="Left">
               <Grid Width="300" Height="146" ClipToBounds="True">
                 <Image Source="avares://SkyrimLightingPatcher.App/Assets/other0.jpg"
                        Stretch="UniformToFill"
@@ -212,7 +234,7 @@
                               <ItemsControl ItemsSource="{Binding Shapes}">
                                 <ItemsControl.ItemTemplate>
                                   <DataTemplate x:DataType="models:ShapeScanItemViewModel">
-                                    <Border Background="{DynamicResource SurfaceBackgroundDark}" BorderBrush="{DynamicResource Border}" BorderThickness="1" CornerRadius="10" Padding="10">
+                                    <Border Background="{DynamicResource SurfaceBackgroundDark}" CornerRadius="10" Padding="10">
                                       <Grid ColumnDefinitions="2*,Auto,Auto" RowDefinitions="Auto,Auto,Auto">
                                         <TextBlock Grid.Column="0" Grid.Row="0" FontWeight="SemiBold" Text="{Binding ShapeName}" />
                                         <TextBlock Grid.Column="1" Grid.Row="0" Foreground="{DynamicResource TextLabel}" Text="{Binding KindText}" />

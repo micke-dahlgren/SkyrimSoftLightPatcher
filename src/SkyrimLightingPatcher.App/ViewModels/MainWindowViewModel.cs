@@ -25,6 +25,7 @@ public partial class MainWindowViewModel : ObservableObject
     private bool patchStopRequested;
     private bool hasPatchedInSession;
     private bool hasScanStarted;
+    private bool patchRunDirty = true;
 
     public MainWindowViewModel()
     {
@@ -92,13 +93,13 @@ public partial class MainWindowViewModel : ObservableObject
     private string rootPath = string.Empty;
 
     [ObservableProperty]
-    private bool enableEye = true;
+    private bool enableEye = false;
 
     [ObservableProperty]
-    private bool enableBody = true;
+    private bool enableBody = false;
 
     [ObservableProperty]
-    private bool enableOther;
+    private bool enableOther = false;
 
     [ObservableProperty]
     private string outputDestinationPath = string.Empty;
@@ -186,6 +187,7 @@ public partial class MainWindowViewModel : ObservableObject
     public bool HasSelectionSummary => !string.IsNullOrWhiteSpace(SelectionSummaryText);
 
     public bool CanEditSettings => HasConfiguredRoots && !IsSettingsLocked;
+    public bool IsFolderSectionEnabled => !IsScanning && !IsPatching;
     public bool HasAnyEnabledCategory => EnableEye || EnableBody || EnableOther;
 
     public Task InitializeAsync()
@@ -197,8 +199,8 @@ public partial class MainWindowViewModel : ObservableObject
 
         initialized = true;
         RootPath = string.Empty;
-        EnableEye = true;
-        EnableBody = true;
+        EnableEye = false;
+        EnableBody = false;
         EnableOther = false;
         OutputDestinationPath = string.Empty;
         SkyrimDataPath = string.Empty;
@@ -232,9 +234,11 @@ public partial class MainWindowViewModel : ObservableObject
         RootPath = path;
         CurrentOutputPath = null;
         hasPatchedInSession = false;
+        patchRunDirty = true;
         OnPropertyChanged(nameof(HasPatchOutputVisible));
         IsSettingsLocked = false;
         ResetScanPreview();
+        RefreshCommandState();
         return Task.CompletedTask;
     }
 
@@ -242,13 +246,17 @@ public partial class MainWindowViewModel : ObservableObject
     {
         OutputDestinationPath = path;
         hasPatchedInSession = false;
+        patchRunDirty = true;
         OnPropertyChanged(nameof(HasPatchOutputVisible));
+        RefreshCommandState();
         return Task.CompletedTask;
     }
 
     public Task SetSkyrimDataPathAsync(string path)
     {
         SkyrimDataPath = path;
+        patchRunDirty = true;
+        RefreshCommandState();
         return Task.CompletedTask;
     }
 
@@ -264,12 +272,14 @@ public partial class MainWindowViewModel : ObservableObject
 
     partial void OnEnableEyeChanged(bool value)
     {
+        patchRunDirty = true;
         OnPropertyChanged(nameof(HasAnyEnabledCategory));
         RefreshCommandState();
     }
 
     partial void OnEnableBodyChanged(bool value)
     {
+        patchRunDirty = true;
         OnPropertyChanged(nameof(HasAnyEnabledCategory));
         RefreshCommandState();
     }
@@ -292,6 +302,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     partial void OnEnableOtherChanged(bool value)
     {
+        patchRunDirty = true;
         OnPropertyChanged(nameof(HasAnyEnabledCategory));
         RefreshCommandState();
     }
@@ -319,11 +330,13 @@ public partial class MainWindowViewModel : ObservableObject
 
     partial void OnIsScanningChanged(bool value)
     {
+        OnPropertyChanged(nameof(IsFolderSectionEnabled));
         RefreshCommandState();
     }
 
     partial void OnIsPatchingChanged(bool value)
     {
+        OnPropertyChanged(nameof(IsFolderSectionEnabled));
         RefreshCommandState();
     }
 
@@ -473,7 +486,9 @@ public partial class MainWindowViewModel : ObservableObject
             CurrentOutputPath = manifest.OutputArchivePath;
             await LoadCurrentOutputAsync();
             hasPatchedInSession = true;
+            patchRunDirty = false;
             OnPropertyChanged(nameof(HasPatchOutputVisible));
+            RefreshCommandState();
         },
         onCanceled: () =>
         {
@@ -634,6 +649,7 @@ public partial class MainWindowViewModel : ObservableObject
         EmptyResultsMessage = report.FilesScanned == 0
             ? "No scan results yet. Pick a folder and run Scan."
             : "No patchable meshes found for the current folder and values. Click Reset to adjust settings, then scan again.";
+        patchRunDirty = true;
         UpdateSelectionSummary();
         RefreshCommandState();
     }
@@ -656,14 +672,17 @@ public partial class MainWindowViewModel : ObservableObject
     private void ApplyPatchProgress(PatchProgressUpdate progress)
     {
         var remainingFiles = Math.Max(0, progress.TotalFiles - progress.FilesProcessed);
-        BusyStateText = $"Patching... {progress.FilesProcessed}/{progress.TotalFiles}";
+        BusyStateText = progress.FilesProcessed >= progress.TotalFiles && progress.TotalFiles > 0
+            ? "Creating mod file..."
+            : $"Patching... {progress.FilesProcessed}/{progress.TotalFiles}";
         BusyStateColor = "#A9D7FF";
 
         var currentFilePath = progress.CurrentFilePath;
         if (!string.IsNullOrWhiteSpace(currentFilePath) &&
             currentFilePath.StartsWith("__status__:", StringComparison.Ordinal))
         {
-            var statusText = currentFilePath["__status__:".Length..].Trim();
+            var statusText = NormalizePatchStatusText(currentFilePath["__status__:".Length..].Trim());
+            BusyStateText = statusText;
             StatusMessage = $"{statusText} {progress.FilesProcessed}/{progress.TotalFiles} file(s) patched, {remainingFiles} remaining.";
             StatusColor = "#A9D7FF";
             return;
@@ -676,6 +695,26 @@ public partial class MainWindowViewModel : ObservableObject
         StatusMessage =
             $"Patching meshes... {progress.FilesProcessed}/{progress.TotalFiles} file(s) processed, {remainingFiles} remaining. Current: {currentFileName}.";
         StatusColor = "#A9D7FF";
+    }
+
+    private static string NormalizePatchStatusText(string statusText)
+    {
+        if (statusText.StartsWith("Creating output archive", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Creating mod file (.zip)...";
+        }
+
+        if (statusText.StartsWith("Finalizing patch manifest", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Preparing mod files...";
+        }
+
+        if (statusText.StartsWith("Recording patch run metadata", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Saving patch metadata...";
+        }
+
+        return statusText;
     }
 
     private void ResetScanPreview(bool clearScanStarted = true)
@@ -705,11 +744,13 @@ public partial class MainWindowViewModel : ObservableObject
     {
         ResetScanPreview();
         IsSettingsLocked = false;
+        patchRunDirty = true;
         SetStatusInfo("Scan reset. You can adjust values and scan again.");
         BusyStateText = "Ready";
         BusyStateColor = "#D7C29E";
         hasPatchedInSession = false;
         OnPropertyChanged(nameof(HasPatchOutputVisible));
+        RefreshCommandState();
     }
 
     private void StopScanAndReset()
@@ -743,6 +784,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void HandleSelectionChanged(object? sender, EventArgs e)
     {
+        patchRunDirty = true;
         UpdateSelectionSummary();
         RefreshCommandState();
     }
@@ -976,7 +1018,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     private bool CanPatch()
     {
-        return !IsBusy && !IsPatching && HasOutputDestination && GetSelectedShapeCount() > 0;
+        return !IsBusy && !IsPatching && HasOutputDestination && patchRunDirty && GetSelectedShapeCount() > 0;
     }
 
     private bool CanStopPatch()
