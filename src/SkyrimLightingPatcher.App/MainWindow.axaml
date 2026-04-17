@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:SkyrimLightingPatcher.App.Controls"
         xmlns:models="using:SkyrimLightingPatcher.App.Models"
         xmlns:viewModels="using:SkyrimLightingPatcher.App.ViewModels"
         x:Class="SkyrimLightingPatcher.App.MainWindow"
@@ -92,57 +93,30 @@
 
       <Grid ColumnDefinitions="*,*,*" IsEnabled="{Binding CanEditSettings}" IsVisible="{Binding HasConfiguredRoots}">
         <Border Grid.Column="0" Classes="panel" Margin="0,0,8,0">
-          <StackPanel Spacing="10">
-            <TextBlock Classes="section-title" Text="Eye" />
-            <TextBlock Foreground="{DynamicResource TextBody}" Text="Scan for eye shapes." TextWrapping="Wrap" />
-            <CheckBox Content="Scan for Eyes" IsChecked="{Binding EnableEye, Mode=TwoWay}" />
-            <Border CornerRadius="6" HorizontalAlignment="Left">
-              <Grid Width="300" Height="146" ClipToBounds="True">
-                <Image Source="avares://SkyrimLightingPatcher.App/Assets/eyes0.jpg"
-                       Stretch="UniformToFill"
-                       IsVisible="{Binding EnableEye}" />
-                <Image Source="avares://SkyrimLightingPatcher.App/Assets/eyes1.jpg"
-                       Stretch="UniformToFill"
-                       IsVisible="{Binding EnableEye, Converter={x:Static BoolConverters.Not}}" />
-              </Grid>
-            </Border>
-          </StackPanel>
+          <controls:CategoryCard Title="Eye"
+                                 Description="Scan for eye shapes."
+                                 CheckBoxText="Scan for Eyes"
+                                 IsChecked="{Binding EnableEye, Mode=TwoWay}"
+                                 EnabledImage="avares://SkyrimLightingPatcher.App/Assets/eyes0.jpg"
+                                 DisabledImage="avares://SkyrimLightingPatcher.App/Assets/eyes1.jpg" />
         </Border>
 
         <Border Grid.Column="1" Classes="panel" Margin="4,0,4,0">
-          <StackPanel Spacing="10">
-            <TextBlock Classes="section-title" Text="Body" />
-            <TextBlock Foreground="{DynamicResource TextBody}" Text="Scan for body/head/hands/feet skin shapes." TextWrapping="Wrap" />
-            <CheckBox Content="Scan for Body" IsChecked="{Binding EnableBody, Mode=TwoWay}" />
-            <Border CornerRadius="6" HorizontalAlignment="Left">
-              <Grid Width="300" Height="146" ClipToBounds="True">
-                <Image Source="avares://SkyrimLightingPatcher.App/Assets/skin0.jpg"
-                       Stretch="UniformToFill"
-                       IsVisible="{Binding EnableBody}" />
-                <Image Source="avares://SkyrimLightingPatcher.App/Assets/skin1.jpg"
-                       Stretch="UniformToFill"
-                       IsVisible="{Binding EnableBody, Converter={x:Static BoolConverters.Not}}" />
-              </Grid>
-            </Border>
-          </StackPanel>
+          <controls:CategoryCard Title="Body"
+                                 Description="Scan for body/head/hands/feet skin shapes."
+                                 CheckBoxText="Scan for Body"
+                                 IsChecked="{Binding EnableBody, Mode=TwoWay}"
+                                 EnabledImage="avares://SkyrimLightingPatcher.App/Assets/skin0.jpg"
+                                 DisabledImage="avares://SkyrimLightingPatcher.App/Assets/skin1.jpg" />
         </Border>
 
         <Border Grid.Column="2" Classes="panel" Margin="8,0,0,0">
-          <StackPanel Spacing="10">
-            <TextBlock Classes="section-title" Text="Other" />
-            <TextBlock Foreground="{DynamicResource TextBody}" Text="Scan for other Soft_Lighting shapes (animals, flora, etc)." TextWrapping="Wrap" />
-            <CheckBox Content="Scan for Other" IsChecked="{Binding EnableOther, Mode=TwoWay}" />
-            <Border CornerRadius="6" HorizontalAlignment="Left">
-              <Grid Width="300" Height="146" ClipToBounds="True">
-                <Image Source="avares://SkyrimLightingPatcher.App/Assets/other0.jpg"
-                       Stretch="UniformToFill"
-                       IsVisible="{Binding EnableOther}" />
-                <Image Source="avares://SkyrimLightingPatcher.App/Assets/other1.jpg"
-                       Stretch="UniformToFill"
-                       IsVisible="{Binding EnableOther, Converter={x:Static BoolConverters.Not}}" />
-              </Grid>
-            </Border>
-          </StackPanel>
+          <controls:CategoryCard Title="Other"
+                                 Description="Scan for other Soft_Lighting shapes (animals, flora, etc)."
+                                 CheckBoxText="Scan for Other"
+                                 IsChecked="{Binding EnableOther, Mode=TwoWay}"
+                                 EnabledImage="avares://SkyrimLightingPatcher.App/Assets/other0.jpg"
+                                 DisabledImage="avares://SkyrimLightingPatcher.App/Assets/other1.jpg" />
         </Border>
       </Grid>
 
