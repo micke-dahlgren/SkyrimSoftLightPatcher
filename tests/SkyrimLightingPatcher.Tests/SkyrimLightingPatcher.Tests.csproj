@@ -17,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\SkyrimLightingPatcher.App\SkyrimLightingPatcher.App.csproj" />
     <ProjectReference Include="..\..\src\SkyrimLightingPatcher.Core\SkyrimLightingPatcher.Core.csproj" />
     <ProjectReference Include="..\..\src\SkyrimLightingPatcher.NiflyAdapter\SkyrimLightingPatcher.NiflyAdapter.csproj" />
   </ItemGroup>

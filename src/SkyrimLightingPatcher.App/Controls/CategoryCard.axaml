@@ -2,23 +2,22 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="using:SkyrimLightingPatcher.App.Controls"
              x:Class="SkyrimLightingPatcher.App.Controls.CategoryCard"
-             x:DataType="controls:CategoryCard">
+             x:DataType="controls:CategoryCard"
+             x:Name="Root">
   <StackPanel Spacing="10">
-    <TextBlock Classes="section-title"
-               Text="{Binding Title, RelativeSource={RelativeSource AncestorType=controls:CategoryCard}}" />
+    <TextBlock Classes="section-title" Text="{Binding #Root.Title}" />
     <TextBlock Foreground="{DynamicResource TextBody}"
-               Text="{Binding Description, RelativeSource={RelativeSource AncestorType=controls:CategoryCard}}"
+               Text="{Binding #Root.Description}"
                TextWrapping="Wrap" />
-    <CheckBox Content="{Binding CheckBoxText, RelativeSource={RelativeSource AncestorType=controls:CategoryCard}}"
-              IsChecked="{Binding IsChecked, Mode=TwoWay, RelativeSource={RelativeSource AncestorType=controls:CategoryCard}}" />
+    <CheckBox Content="{Binding #Root.CheckBoxText}" IsChecked="{Binding #Root.IsChecked, Mode=TwoWay}" />
     <Border CornerRadius="6" HorizontalAlignment="Left">
       <Grid Width="300" Height="146" ClipToBounds="True">
-        <Image Source="{Binding EnabledImage, RelativeSource={RelativeSource AncestorType=controls:CategoryCard}}"
+        <Image Source="{Binding #Root.EnabledImage}"
                Stretch="UniformToFill"
-               IsVisible="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=controls:CategoryCard}}" />
-        <Image Source="{Binding DisabledImage, RelativeSource={RelativeSource AncestorType=controls:CategoryCard}}"
+               IsVisible="{Binding #Root.IsChecked}" />
+        <Image Source="{Binding #Root.DisabledImage}"
                Stretch="UniformToFill"
-               IsVisible="{Binding IsChecked, Converter={x:Static BoolConverters.Not}, RelativeSource={RelativeSource AncestorType=controls:CategoryCard}}" />
+               IsVisible="{Binding #Root.IsChecked, Converter={x:Static BoolConverters.Not}}" />
       </Grid>
     </Border>
   </StackPanel>

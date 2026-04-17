@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 
 namespace SkyrimLightingPatcher.App.Controls;
 
@@ -18,11 +19,11 @@ public partial class CategoryCard : UserControl
     public static readonly StyledProperty<bool> IsCheckedProperty =
         AvaloniaProperty.Register<CategoryCard, bool>(nameof(IsChecked), false);
 
-    public static readonly StyledProperty<string> EnabledImageProperty =
-        AvaloniaProperty.Register<CategoryCard, string>(nameof(EnabledImage), string.Empty);
+    public static readonly StyledProperty<IImage?> EnabledImageProperty =
+        AvaloniaProperty.Register<CategoryCard, IImage?>(nameof(EnabledImage));
 
-    public static readonly StyledProperty<string> DisabledImageProperty =
-        AvaloniaProperty.Register<CategoryCard, string>(nameof(DisabledImage), string.Empty);
+    public static readonly StyledProperty<IImage?> DisabledImageProperty =
+        AvaloniaProperty.Register<CategoryCard, IImage?>(nameof(DisabledImage));
 
     public CategoryCard()
     {
@@ -53,13 +54,13 @@ public partial class CategoryCard : UserControl
         set => SetValue(IsCheckedProperty, value);
     }
 
-    public string EnabledImage
+    public IImage? EnabledImage
     {
         get => GetValue(EnabledImageProperty);
         set => SetValue(EnabledImageProperty, value);
     }
 
-    public string DisabledImage
+    public IImage? DisabledImage
     {
         get => GetValue(DisabledImageProperty);
         set => SetValue(DisabledImageProperty, value);

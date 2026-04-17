@@ -619,7 +619,36 @@ public partial class MainWindowViewModel
 
     private async Task PersistSettingsAsync()
     {
-        await settingsStore.SaveAsync(new AppSettings(string.Empty, new PatchSettings(1.0f, 1.0f, false, 1.0f, true, true)));
+        var persistedPatchSettings = new PatchSettings(
+            EyeValue: 1.0f,
+            BodyValue: 1.0f,
+            EnableOther: EnableOther,
+            OtherValue: 1.0f,
+            EnableEye: EnableEye,
+            EnableBody: EnableBody);
+        await settingsStore.SaveAsync(new AppSettings(null, persistedPatchSettings));
+    }
+
+    private void PersistSettingsInBackground()
+    {
+        if (!initialized || suppressSettingsPersistence)
+        {
+            return;
+        }
+
+        _ = PersistSettingsSafeAsync();
+    }
+
+    private async Task PersistSettingsSafeAsync()
+    {
+        try
+        {
+            await PersistSettingsAsync();
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Unable to persist app settings: {exception.Message}");
+        }
     }
 
     private async Task<bool> TryDetectAndApplyVortexRootAsync(bool forceStatusMessage)
@@ -657,6 +686,7 @@ public partial class MainWindowViewModel
             SetStatusInfo($"{detectedFolder.Source} Using {RootPath}.");
         }
 
+        await PersistSettingsSafeAsync();
         return true;
     }
 
@@ -721,12 +751,6 @@ public partial class MainWindowViewModel
     {
         StatusMessage = message;
         StatusColor = "#A9D7FF";
-    }
-
-    private void SetStatusSuccess(string message)
-    {
-        StatusMessage = message;
-        StatusColor = "#B9F6CA";
     }
 
     private void SetStatusError(string message)

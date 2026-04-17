@@ -26,6 +26,7 @@ public partial class MainWindowViewModel : ObservableObject
     private bool hasPatchedInSession;
     private bool hasScanStarted;
     private bool patchRunDirty = true;
+    private bool suppressSettingsPersistence;
 
     public MainWindowViewModel()
     {
@@ -190,18 +191,36 @@ public partial class MainWindowViewModel : ObservableObject
     public bool IsFolderSectionEnabled => !IsScanning && !IsPatching;
     public bool HasAnyEnabledCategory => EnableEye || EnableBody || EnableOther;
 
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
         if (initialized)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         initialized = true;
-        RootPath = string.Empty;
-        EnableEye = false;
-        EnableBody = false;
-        EnableOther = false;
+        suppressSettingsPersistence = true;
+        try
+        {
+            var loadedSettings = await settingsStore.LoadAsync();
+            var loadedPatchSettings = loadedSettings.PatchSettings.ClampToSafeRange();
+            RootPath = string.Empty;
+            EnableEye = loadedPatchSettings.EnableEye;
+            EnableBody = loadedPatchSettings.EnableBody;
+            EnableOther = loadedPatchSettings.EnableOther;
+        }
+        catch
+        {
+            RootPath = string.Empty;
+            EnableEye = false;
+            EnableBody = false;
+            EnableOther = false;
+        }
+        finally
+        {
+            suppressSettingsPersistence = false;
+        }
+
         OutputDestinationPath = string.Empty;
         SkyrimDataPath = string.Empty;
         CurrentOutputPath = null;
@@ -210,7 +229,6 @@ public partial class MainWindowViewModel : ObservableObject
         hasPatchedInSession = false;
         OnPropertyChanged(nameof(HasPatchOutputVisible));
         _ = TryAutoDetectSkyrimDataPathAsync();
-        return Task.CompletedTask;
     }
 
     private async Task TryAutoDetectSkyrimDataPathAsync()
@@ -229,7 +247,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    public Task SetRootPathAsync(string path)
+    public async Task SetRootPathAsync(string path)
     {
         RootPath = path;
         CurrentOutputPath = null;
@@ -239,7 +257,7 @@ public partial class MainWindowViewModel : ObservableObject
         IsSettingsLocked = false;
         ResetScanPreview();
         RefreshCommandState();
-        return Task.CompletedTask;
+        await PersistSettingsSafeAsync();
     }
 
     public Task SetOutputDestinationPathAsync(string path)
@@ -273,6 +291,7 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnEnableEyeChanged(bool value)
     {
         patchRunDirty = true;
+        PersistSettingsInBackground();
         OnPropertyChanged(nameof(HasAnyEnabledCategory));
         RefreshCommandState();
     }
@@ -280,6 +299,7 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnEnableBodyChanged(bool value)
     {
         patchRunDirty = true;
+        PersistSettingsInBackground();
         OnPropertyChanged(nameof(HasAnyEnabledCategory));
         RefreshCommandState();
     }
@@ -303,6 +323,7 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnEnableOtherChanged(bool value)
     {
         patchRunDirty = true;
+        PersistSettingsInBackground();
         OnPropertyChanged(nameof(HasAnyEnabledCategory));
         RefreshCommandState();
     }
