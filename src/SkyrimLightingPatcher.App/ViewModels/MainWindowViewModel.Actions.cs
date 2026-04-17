@@ -121,6 +121,8 @@ public partial class MainWindowViewModel
         patchCancellationTokenSource?.Dispose();
         patchCancellationTokenSource = new CancellationTokenSource();
         patchStopRequested = false;
+        canStopPatch = true;
+        RefreshCommandState();
 
         IsPatching = true;
         await RunBusyOperationAsync("Patching meshes...", async () =>
@@ -161,6 +163,7 @@ public partial class MainWindowViewModel
             patchCancellationTokenSource?.Dispose();
             patchCancellationTokenSource = null;
             patchStopRequested = false;
+            canStopPatch = true;
         });
     }
 
@@ -325,10 +328,20 @@ public partial class MainWindowViewModel
 
     private void ApplyPatchProgress(PatchProgressUpdate progress)
     {
+        var totalFiles = Math.Max(1, progress.TotalFiles);
+        var percent = (int)Math.Round(progress.FilesProcessed * 100.0 / totalFiles);
+        var hasReachedFinalization = progress.TotalFiles > 0 && progress.FilesProcessed >= progress.TotalFiles;
+        var shouldAllowStopPatch = !hasReachedFinalization;
+        if (canStopPatch != shouldAllowStopPatch)
+        {
+            canStopPatch = shouldAllowStopPatch;
+            RefreshCommandState();
+        }
+
         var remainingFiles = Math.Max(0, progress.TotalFiles - progress.FilesProcessed);
         BusyStateText = progress.FilesProcessed >= progress.TotalFiles && progress.TotalFiles > 0
-            ? "Creating mod file..."
-            : $"Patching... {progress.FilesProcessed}/{progress.TotalFiles}";
+            ? $"Creating mod file... ({percent}%)"
+            : $"Patching... {progress.FilesProcessed}/{progress.TotalFiles} ({percent}%)";
         BusyStateColor = "#A9D7FF";
 
         var currentFilePath = progress.CurrentFilePath;
@@ -337,7 +350,8 @@ public partial class MainWindowViewModel
         {
             var statusText = NormalizePatchStatusText(currentFilePath["__status__:".Length..].Trim());
             BusyStateText = statusText;
-            StatusMessage = $"{statusText} {progress.FilesProcessed}/{progress.TotalFiles} file(s) patched, {remainingFiles} remaining.";
+            StatusMessage =
+                $"{statusText} {progress.FilesProcessed}/{progress.TotalFiles} file(s) patched ({percent}%), {remainingFiles} remaining.";
             StatusColor = "#A9D7FF";
             return;
         }
@@ -347,7 +361,7 @@ public partial class MainWindowViewModel
             : Path.GetFileName(currentFilePath);
 
         StatusMessage =
-            $"Patching meshes... {progress.FilesProcessed}/{progress.TotalFiles} file(s) processed, {remainingFiles} remaining. Current: {currentFileName}.";
+            $"Patching meshes... {progress.FilesProcessed}/{progress.TotalFiles} file(s) processed ({percent}%), {remainingFiles} remaining. Current: {currentFileName}.";
         StatusColor = "#A9D7FF";
     }
 
@@ -707,7 +721,7 @@ public partial class MainWindowViewModel
 
     private bool CanStopPatch()
     {
-        return IsPatching;
+        return IsPatching && canStopPatch;
     }
 
     private bool CanResetScan()

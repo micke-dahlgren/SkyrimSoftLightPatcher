@@ -9,7 +9,7 @@
         Height="860"
         MinWidth="980"
         MinHeight="720"
-        Title="Skyrim Soft Light Mesh Patcher"
+        Title="Skyrim Glowing Mesh Patcher"
         Opened="Window_OnOpened">
   <Design.DataContext>
     <viewModels:MainWindowViewModel />
@@ -19,7 +19,7 @@
     <StackPanel Margin="20" Spacing="16">
       <Border Classes="panel" Background="{DynamicResource SurfaceBackgroundDark}">
         <StackPanel Spacing="8">
-          <TextBlock FontSize="28" FontWeight="Bold" Foreground="{DynamicResource TextHeader}" Text="Soft Light Mesh Patcher" />
+          <TextBlock FontSize="28" FontWeight="Bold" Foreground="{DynamicResource TextHeader}" Text="Glowing Mesh Patcher" />
           <TextBlock Foreground="{DynamicResource TextBody}" TextWrapping="Wrap"
                      Text="Generate a patch-mod that removes the effects from meshes that make them glow in shadows." />
         </StackPanel>

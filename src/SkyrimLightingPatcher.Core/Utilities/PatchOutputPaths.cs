@@ -2,7 +2,7 @@ namespace SkyrimLightingPatcher.Core.Utilities;
 
 public static class PatchOutputPaths
 {
-    public const string OutputModName = "Soft Light Mesh Patcher Output";
+    public const string OutputModName = "Glowing Mesh Patcher Output";
     public const string OutputManifestFileName = "softlight-patch-manifest.json";
     private const string GeneratedModsFolderName = "GeneratedMods";
     private const string VortexMarkerFileName = "__vortex_staging_folder";

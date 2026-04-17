@@ -34,6 +34,19 @@ public sealed class ShapeClassifierTests
     }
 
     [Fact]
+    public void Classify_EyeShapeWithBrownSuffix_IsNotExcludedByBrowToken()
+    {
+        var probe = CreateProbe(
+            filePath: @"C:\Mods\Meshes\actors\character\facegendata\facegeom\npc.nif",
+            shapeName: "MaleEyesHumanHazelBrown",
+            texturePaths: [@"textures\actors\character\eyes\maleeyeshazel.dds"]);
+
+        var result = classifier.Classify(probe);
+
+        Assert.Equal(ShapeKind.Eye, result.Kind);
+    }
+
+    [Fact]
     public void Classify_SharedBodyMesh_ReturnsBody()
     {
         var probe = CreateProbe(

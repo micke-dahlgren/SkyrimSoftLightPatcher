@@ -27,6 +27,7 @@ public partial class MainWindowViewModel : ObservableObject
     private bool hasScanStarted;
     private bool patchRunDirty = true;
     private bool suppressSettingsPersistence;
+    private bool canStopPatch = true;
 
     public MainWindowViewModel()
     {

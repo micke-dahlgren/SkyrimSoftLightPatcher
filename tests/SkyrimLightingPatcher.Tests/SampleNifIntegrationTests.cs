@@ -119,6 +119,25 @@ public sealed class SampleNifIntegrationTests
         Assert.Contains(file.Shapes, static shape => shape.Kind == ShapeKind.Other || shape.Kind == ShapeKind.Ignore);
     }
 
+    [Fact]
+    public async Task HeadWithEyesExample_Scan_FindsPatchableEyeShape()
+    {
+        await using var sandbox = await TestSandbox.CreateAsync("head_with_eyes_example.NIF");
+        var meshService = new ReflectionNifMeshService();
+        var probes = await meshService.ProbeAsync(sandbox.SamplePath);
+        Assert.NotEmpty(probes);
+
+        var scanService = new ScanService(meshService, new ShapeClassifier());
+        var report = await scanService.ScanAsync(new ScanRequest(
+            sandbox.RootPath,
+            new PatchSettings(1.0f, 1.0f, true, 1.0f, true, true)));
+
+        var file = Assert.Single(report.Files);
+        Assert.False(file.HasError, file.ErrorMessage ?? DescribeReport(report));
+        Assert.True(report.PatchableEyeShapes > 0, DescribeReport(report));
+        Assert.Contains(file.Shapes, shape => shape.Kind == ShapeKind.Eye && shape.IsPatchCandidate);
+    }
+
     [Theory]
     [InlineData("eye_example.nif", 1.0f, 1.0f, ShapeKind.Eye)]
     [InlineData("skin_example.nif", 1.0f, 1.0f, ShapeKind.Body)]
@@ -235,6 +254,46 @@ public sealed class SampleNifIntegrationTests
                                         Math.Abs(shape.Probe.LightingEffect1) <= 0.0001f &&
                                         Math.Abs(shape.Probe.LightingEffect2) <= 0.0001f);
         Assert.Contains(shapes, static shape => shape.Kind == ShapeKind.Eye);
+        Assert.Equal(originalBytes, await File.ReadAllBytesAsync(sandbox.SamplePath));
+    }
+
+    [Fact]
+    public async Task HeadWithEyesExample_OutputMod_PatchesBodyAndEye()
+    {
+        await using var sandbox = await TestSandbox.CreateAsync("head_with_eyes_example.NIF");
+        var nifMeshService = new ReflectionNifMeshService();
+        var scanService = new ScanService(nifMeshService, new ShapeClassifier());
+        var backupStore = new BackupStore();
+        var patchExecutor = new PatchExecutor(new PatchPlanner(), nifMeshService, new ScanFileResolver(), backupStore);
+        var settings = new PatchSettings(1.0f, 1.0f, true, 1.0f, true, true);
+        var neutralSettings = new PatchSettings(1.0f, 1.0f, true, 1.0f, true, true);
+        var originalBytes = await File.ReadAllBytesAsync(sandbox.SamplePath);
+        var archivePath = Path.Combine(sandbox.RootPath, "LightingEffect1 Mesh Patcher Output.zip");
+
+        var report = await scanService.ScanAsync(new ScanRequest(sandbox.RootPath, settings));
+        Assert.True(report.PatchableShapes >= 2, DescribeReport(report));
+        Assert.True(report.PatchableEyeShapes > 0, DescribeReport(report));
+
+        var manifest = await patchExecutor.ExecuteAsync(report, archivePath);
+        var manifestFile = Assert.Single(manifest.Files);
+        Assert.Equal("Patched", manifestFile.Status);
+        Assert.Equal(originalBytes, await File.ReadAllBytesAsync(sandbox.SamplePath));
+        Assert.True(File.Exists(manifestFile.OutputPath));
+        Assert.True(File.Exists(manifest.OutputArchivePath));
+
+        var extractedRoot = ExtractArchiveToDirectory(manifest.OutputArchivePath, sandbox.RootPath, "extract-head-with-eyes");
+        var rescanned = await scanService.ScanAsync(new ScanRequest(extractedRoot, neutralSettings));
+        Assert.Equal(0, rescanned.PatchableShapes);
+        var shapes = rescanned.Files.SelectMany(static file => file.Shapes).ToArray();
+
+        Assert.Contains(shapes, shape => shape.Probe.ShapeName == "00KLH_MaleHeadImperial" &&
+                                        shape.Kind == ShapeKind.Body &&
+                                        Math.Abs(shape.Probe.LightingEffect1) <= 0.0001f &&
+                                        Math.Abs(shape.Probe.LightingEffect2) <= 0.0001f);
+        Assert.Contains(shapes, shape => shape.Probe.ShapeName == "MaleEyesHumanHazelBrown" &&
+                                        shape.Kind == ShapeKind.Eye &&
+                                        Math.Abs(shape.Probe.LightingEffect1) <= 0.0001f &&
+                                        Math.Abs(shape.Probe.LightingEffect2) <= 0.0001f);
         Assert.Equal(originalBytes, await File.ReadAllBytesAsync(sandbox.SamplePath));
     }
 
