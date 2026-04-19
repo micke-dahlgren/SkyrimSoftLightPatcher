@@ -70,7 +70,8 @@ public sealed class MainWindowViewModelSettingsTests
             new NoOpScanService(),
             new NoOpPatchExecutor(),
             new NoOpOutputModService(),
-            new NoOpVortexPathResolver());
+            new NoOpVortexPathResolver(),
+            new NoOpModOrganizer2PathResolver());
     }
 
     private static async Task WaitForSaveCountAsync(RecordingSettingsStore settingsStore, int expectedCount)
@@ -185,6 +186,16 @@ public sealed class MainWindowViewModelSettingsTests
         public Task<string?> TryResolveSkyrimDataPathAsync(CancellationToken cancellationToken = default)
         {
             return Task.FromResult<string?>(null);
+        }
+    }
+
+    private sealed class NoOpModOrganizer2PathResolver : IModOrganizer2PathResolver
+    {
+        public Task<ModOrganizer2Instance?> TryResolveSkyrimSeAsync(
+            ModOrganizer2InstanceKind? preferredKind = null,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<ModOrganizer2Instance?>(null);
         }
     }
 }

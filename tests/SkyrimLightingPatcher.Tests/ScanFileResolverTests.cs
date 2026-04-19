@@ -84,6 +84,181 @@ public sealed class ScanFileResolverTests
     }
 
     [Fact]
+    public async Task ResolveFilePathsAsync_Mo2InstanceRoot_OnlyIncludesEnabledManagedMods()
+    {
+        var instanceRoot = CreateTempDirectory();
+        var modsPath = Path.Combine(instanceRoot, "mods");
+        var profilesPath = Path.Combine(instanceRoot, "profiles");
+        var profilePath = Path.Combine(profilesPath, "TestProfile");
+        Directory.CreateDirectory(modsPath);
+        Directory.CreateDirectory(profilePath);
+
+        var enabledMesh = Path.Combine(modsPath, "Enabled Mod", "meshes", "actors", "character", "eyes", "blue.nif");
+        var disabledMesh = Path.Combine(modsPath, "Disabled Mod", "meshes", "actors", "character", "eyes", "green.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(enabledMesh)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(disabledMesh)!);
+        await File.WriteAllTextAsync(enabledMesh, "enabled");
+        await File.WriteAllTextAsync(disabledMesh, "disabled");
+
+        await File.WriteAllTextAsync(
+            Path.Combine(instanceRoot, "ModOrganizer.ini"),
+            """
+            [General]
+            gameName=Skyrim Special Edition
+            selected_profile=@ByteArray(TestProfile)
+            """);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(profilePath, "modlist.txt"),
+            """
+            +Enabled Mod
+            -Disabled Mod
+            """);
+
+        var resolver = new ScanFileResolver();
+
+        var files = await resolver.ResolveFilePathsAsync(instanceRoot, modManager: ModManagerKind.ModOrganizer2);
+
+        var file = Assert.Single(files);
+        Assert.Equal(MeshSourceKind.Loose, file.Kind);
+        Assert.Equal(enabledMesh, file.LocalPath);
+        Assert.Equal("Enabled Mod", file.SourceModName);
+    }
+
+    [Fact]
+    public async Task ResolveFilePathsAsync_Mo2ModsFolder_ResolvesInstanceMetadataFromParentFolder()
+    {
+        var instanceRoot = CreateTempDirectory();
+        var modsPath = Path.Combine(instanceRoot, "mods");
+        var profilesPath = Path.Combine(instanceRoot, "profiles");
+        var profilePath = Path.Combine(profilesPath, "TestProfile");
+        Directory.CreateDirectory(modsPath);
+        Directory.CreateDirectory(profilePath);
+
+        var enabledMesh = Path.Combine(modsPath, "Enabled Mod", "meshes", "actors", "character", "eyes", "blue.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(enabledMesh)!);
+        await File.WriteAllTextAsync(enabledMesh, "enabled");
+
+        await File.WriteAllTextAsync(
+            Path.Combine(instanceRoot, "ModOrganizer.ini"),
+            """
+            [General]
+            gameName=Skyrim Special Edition
+            selected_profile=@ByteArray(TestProfile)
+            """);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(profilePath, "modlist.txt"),
+            """
+            +Enabled Mod
+            """);
+
+        var resolver = new ScanFileResolver();
+
+        var files = await resolver.ResolveFilePathsAsync(modsPath, modManager: ModManagerKind.ModOrganizer2);
+
+        var file = Assert.Single(files);
+        Assert.Equal(MeshSourceKind.Loose, file.Kind);
+        Assert.Equal(enabledMesh, file.LocalPath);
+        Assert.Equal("Enabled Mod", file.SourceModName);
+    }
+
+    [Fact]
+    public async Task ResolveFilePathsAsync_Mo2Archives_FallbackToEnabledModOrderWhenPluginMatchMissing()
+    {
+        var instanceRoot = CreateTempDirectory();
+        var modsPath = Path.Combine(instanceRoot, "mods");
+        var profilePath = Path.Combine(instanceRoot, "profiles", "TestProfile");
+        Directory.CreateDirectory(modsPath);
+        Directory.CreateDirectory(profilePath);
+
+        var modAArchive = Path.Combine(modsPath, "Mod A", "moda_assets.bsa");
+        var modBArchive = Path.Combine(modsPath, "Mod B", "modb_assets.bsa");
+        Directory.CreateDirectory(Path.GetDirectoryName(modAArchive)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(modBArchive)!);
+
+        await TestBsaArchiveBuilder.CreateFromFilesAsync(
+            modAArchive,
+            (@"meshes\actors\character\eyes\shared.nif", Path.Combine(TestDataRoot, "eye_example.nif")));
+        await TestBsaArchiveBuilder.CreateFromFilesAsync(
+            modBArchive,
+            (@"meshes\actors\character\eyes\shared.nif", Path.Combine(TestDataRoot, "eye_example.nif")));
+
+        await File.WriteAllTextAsync(
+            Path.Combine(instanceRoot, "ModOrganizer.ini"),
+            """
+            [General]
+            gameName=Skyrim Special Edition
+            selected_profile=@ByteArray(TestProfile)
+            """);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(profilePath, "modlist.txt"),
+            """
+            +Mod A
+            +Mod B
+            """);
+
+        var resolver = new ScanFileResolver();
+        var files = await resolver.ResolveFilePathsAsync(instanceRoot, modManager: ModManagerKind.ModOrganizer2);
+
+        var file = Assert.Single(files);
+        Assert.Equal(MeshSourceKind.Archive, file.Kind);
+        Assert.Equal("Mod B", file.SourceModName);
+    }
+
+    [Fact]
+    public async Task ResolveFilePathsAsync_Mo2Archives_PluginOrderOverridesEnabledModOrder()
+    {
+        var instanceRoot = CreateTempDirectory();
+        var modsPath = Path.Combine(instanceRoot, "mods");
+        var profilePath = Path.Combine(instanceRoot, "profiles", "TestProfile");
+        Directory.CreateDirectory(modsPath);
+        Directory.CreateDirectory(profilePath);
+
+        var modAArchive = Path.Combine(modsPath, "Mod A", "A.bsa");
+        var modBArchive = Path.Combine(modsPath, "Mod B", "B.bsa");
+        Directory.CreateDirectory(Path.GetDirectoryName(modAArchive)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(modBArchive)!);
+
+        await TestBsaArchiveBuilder.CreateFromFilesAsync(
+            modAArchive,
+            (@"meshes\actors\character\eyes\shared.nif", Path.Combine(TestDataRoot, "eye_example.nif")));
+        await TestBsaArchiveBuilder.CreateFromFilesAsync(
+            modBArchive,
+            (@"meshes\actors\character\eyes\shared.nif", Path.Combine(TestDataRoot, "eye_example.nif")));
+
+        await File.WriteAllTextAsync(
+            Path.Combine(instanceRoot, "ModOrganizer.ini"),
+            """
+            [General]
+            gameName=Skyrim Special Edition
+            selected_profile=@ByteArray(TestProfile)
+            """);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(profilePath, "modlist.txt"),
+            """
+            +Mod B
+            +Mod A
+            """);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(profilePath, "loadorder.txt"),
+            """
+            A.esp
+            B.esp
+            """);
+
+        var resolver = new ScanFileResolver();
+        var files = await resolver.ResolveFilePathsAsync(instanceRoot, modManager: ModManagerKind.ModOrganizer2);
+
+        var file = Assert.Single(files);
+        Assert.Equal(MeshSourceKind.Archive, file.Kind);
+        Assert.Equal("Mod B", file.SourceModName);
+    }
+
+    [Fact]
     public async Task ResolveFilePathsAsync_VortexFallback_IncludesLooseMeshesWhenNoDeploymentManifestExists()
     {
         var rootPath = CreateTempDirectory();

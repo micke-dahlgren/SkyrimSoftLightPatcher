@@ -31,6 +31,15 @@
 
           <StackPanel Spacing="8">
             <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Mod manager:" />
+              <ComboBox Grid.Column="1"
+                        ItemsSource="{Binding ModManagerOptions}"
+                        SelectedItem="{Binding SelectedModManager, Mode=TwoWay}"
+                        HorizontalAlignment="Left"
+                        MinWidth="220" />
+            </Grid>
+            <Border Height="6" Background="Transparent" />
+            <Grid ColumnDefinitions="Auto,*">
               <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Mod staging folder:" />
               <TextBlock Grid.Column="1"
                          VerticalAlignment="Center"
@@ -46,7 +55,7 @@
                          IsVisible="{Binding HasRootPath, Converter={x:Static BoolConverters.Not}}" />
             </Grid>
             <Grid ColumnDefinitions="Auto,Auto,*">
-              <Button Grid.Column="0" Command="{Binding DetectVortexCommand}" Content="Use Vortex" />
+              <Button Grid.Column="0" Command="{Binding DetectVortexCommand}" Content="Auto locate" />
               <Button Grid.Column="1" Margin="8,0,0,0" Click="BrowseRootFolder_OnClick" Content="Choose folder" />
             </Grid>
           </StackPanel>

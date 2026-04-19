@@ -29,9 +29,32 @@ public sealed record AppSettings(string? LastRootPath, PatchSettings PatchSettin
     public static AppSettings Default { get; } = new(null, PatchSettings.Default);
 }
 
-public sealed record ScanRequest(string RootPath, PatchSettings Settings, string? SkyrimDataPath = null);
+public enum ModManagerKind
+{
+    Vortex = 0,
+    ModOrganizer2 = 1,
+}
+
+public sealed record ScanRequest(
+    string RootPath,
+    PatchSettings Settings,
+    string? SkyrimDataPath = null,
+    ModManagerKind ModManager = ModManagerKind.Vortex);
 
 public sealed record VortexStagingFolder(string RootPath, string Source);
+public enum ModOrganizer2InstanceKind
+{
+    Global = 0,
+    Portable = 1,
+}
+
+public sealed record ModOrganizer2Instance(
+    string InstancePath,
+    string ModsPath,
+    string ProfilesPath,
+    string SelectedProfileName,
+    string Source,
+    ModOrganizer2InstanceKind InstanceKind = ModOrganizer2InstanceKind.Global);
 
 public enum MeshSourceKind
 {

@@ -44,7 +44,13 @@ public sealed class ScanService : IScanService
         var patchableShapes = 0;
         var errorFiles = 0;
         var scanErrors = new List<ScanErrorEntry>();
-        var sources = await scanFileResolver.ResolveFilePathsAsync(request.RootPath, request.SkyrimDataPath, cancellationToken).ConfigureAwait(false);
+        var sources = await scanFileResolver
+            .ResolveFilePathsAsync(
+                request.RootPath,
+                request.SkyrimDataPath,
+                request.ModManager,
+                cancellationToken)
+            .ConfigureAwait(false);
         var totalFiles = sources.Count;
 
         foreach (var source in sources)

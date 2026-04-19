@@ -28,13 +28,15 @@ public partial class App : Application
             var patchExecutor = new PatchExecutor(patchPlanner, nifMeshService, scanFileResolver, backupStore);
             var outputModService = new OutputModService(backupStore);
             var vortexPathResolver = new VortexPathResolver();
+            var modOrganizer2PathResolver = new ModOrganizer2PathResolver();
 
             var mainWindowViewModel = new MainWindowViewModel(
                 settingsStore,
                 scanService,
                 patchExecutor,
                 outputModService,
-                vortexPathResolver);
+                vortexPathResolver,
+                modOrganizer2PathResolver);
 
             desktop.MainWindow = new MainWindow(mainWindowViewModel);
         }

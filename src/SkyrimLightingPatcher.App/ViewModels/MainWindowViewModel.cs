@@ -17,6 +17,7 @@ public partial class MainWindowViewModel : ObservableObject
     private readonly IPatchExecutor patchExecutor;
     private readonly IOutputModService outputModService;
     private readonly IVortexPathResolver vortexPathResolver;
+    private readonly IModOrganizer2PathResolver modOrganizer2PathResolver;
     private ScanReport? currentReport;
     private bool initialized;
     private CancellationTokenSource? scanCancellationTokenSource;
@@ -36,6 +37,7 @@ public partial class MainWindowViewModel : ObservableObject
         patchExecutor = new DesignTimePatchExecutor();
         outputModService = new DesignTimeOutputModService();
         vortexPathResolver = new DesignTimeVortexPathResolver();
+        modOrganizer2PathResolver = new DesignTimeModOrganizer2PathResolver();
 
         DetectVortexCommand = new AsyncRelayCommand(DetectVortexAsync, () => !IsBusy);
         DetectSkyrimDataCommand = new AsyncRelayCommand(DetectSkyrimDataAsync, () => !IsBusy);
@@ -53,13 +55,15 @@ public partial class MainWindowViewModel : ObservableObject
         IScanService scanService,
         IPatchExecutor patchExecutor,
         IOutputModService outputModService,
-        IVortexPathResolver vortexPathResolver)
+        IVortexPathResolver vortexPathResolver,
+        IModOrganizer2PathResolver modOrganizer2PathResolver)
     {
         this.settingsStore = settingsStore;
         this.scanService = scanService;
         this.patchExecutor = patchExecutor;
         this.outputModService = outputModService;
         this.vortexPathResolver = vortexPathResolver;
+        this.modOrganizer2PathResolver = modOrganizer2PathResolver;
 
         DetectVortexCommand = new AsyncRelayCommand(DetectVortexAsync, () => !IsBusy);
         DetectSkyrimDataCommand = new AsyncRelayCommand(DetectSkyrimDataAsync, () => !IsBusy);
@@ -73,6 +77,12 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     public ObservableCollection<ModScanGroupViewModel> ModGroups { get; } = [];
+    public IReadOnlyList<string> ModManagerOptions { get; } =
+    [
+        "Vortex",
+        "Mod Organizer 2 (Global)",
+        "Mod Organizer 2 (Portable)",
+    ];
 
     public IAsyncRelayCommand DetectVortexCommand { get; }
     public IAsyncRelayCommand DetectSkyrimDataCommand { get; }
@@ -93,6 +103,9 @@ public partial class MainWindowViewModel : ObservableObject
 
     [ObservableProperty]
     private string rootPath = string.Empty;
+
+    [ObservableProperty]
+    private string selectedModManager = "Vortex";
 
     [ObservableProperty]
     private bool enableEye = false;
@@ -294,6 +307,12 @@ public partial class MainWindowViewModel : ObservableObject
         patchRunDirty = true;
         PersistSettingsInBackground();
         OnPropertyChanged(nameof(HasAnyEnabledCategory));
+        RefreshCommandState();
+    }
+
+    partial void OnSelectedModManagerChanged(string value)
+    {
+        patchRunDirty = true;
         RefreshCommandState();
     }
 

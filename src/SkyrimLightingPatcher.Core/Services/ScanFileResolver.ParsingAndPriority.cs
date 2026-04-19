@@ -1,7 +1,5 @@
 using System.Buffers.Binary;
-using System.Security.Cryptography;
 using System.Text;
-using SkyrimLightingPatcher.Core.Interfaces;
 using SkyrimLightingPatcher.Core.Models;
 using SkyrimLightingPatcher.Core.Utilities;
 
@@ -10,21 +8,48 @@ namespace SkyrimLightingPatcher.Core.Services;
 public sealed partial class ScanFileResolver
 {
     // Mirrors game load-order precedence for archive selection when plugin names align.
-    private (int Group, int PluginIndex, string RelativePath) GetArchivePriority(string rootPath, string archivePath)
+    private (int Group, int PluginIndex, string RelativePath) GetArchivePriority(
+        string rootPath,
+        ArchiveCandidate archiveCandidate,
+        ModManagerKind modManager,
+        ModOrganizer2Paths? modOrganizer2Paths,
+        IReadOnlyDictionary<string, int>? mo2EnabledModOrder)
     {
-        var relativePath = PathUtility.GetRelativeOrFileName(rootPath, archivePath);
-        var pluginOrder = GetPluginLoadOrder();
+        var archivePath = archiveCandidate.ArchivePath;
+        var relativePath = archiveCandidate.Origin == ArchiveCandidateOrigin.Mo2ManagedMod
+            ? PathUtility.GetRelativeOrFileName(archiveCandidate.DisplayRootPath, archivePath)
+            : PathUtility.GetRelativeOrFileName(rootPath, archivePath);
+        var pluginOrder = GetPluginLoadOrder(modManager, modOrganizer2Paths);
         var baseName = Path.GetFileNameWithoutExtension(archivePath);
-        var index = pluginOrder.FindIndex(plugin =>
+        var pluginIndex = pluginOrder.FindIndex(plugin =>
             string.Equals(plugin, baseName, StringComparison.OrdinalIgnoreCase));
 
-        return index >= 0
-            ? (1, index, relativePath)
-            : (0, int.MaxValue, relativePath);
+        if (pluginIndex >= 0)
+        {
+            return (2, pluginIndex, relativePath);
+        }
+
+        if (archiveCandidate.Origin == ArchiveCandidateOrigin.Mo2ManagedMod &&
+            mo2EnabledModOrder is not null)
+        {
+            var sourceModName = GetSourceModNameFromRelativePath(relativePath);
+            if (!string.IsNullOrWhiteSpace(sourceModName) &&
+                mo2EnabledModOrder.TryGetValue(sourceModName, out var modIndex))
+            {
+                return (1, modIndex, relativePath);
+            }
+        }
+
+        return (0, int.MaxValue, relativePath);
     }
 
-    private List<string> GetPluginLoadOrder()
+    private List<string> GetPluginLoadOrder(ModManagerKind modManager, ModOrganizer2Paths? modOrganizer2Paths)
     {
+        if (modManager == ModManagerKind.ModOrganizer2 && modOrganizer2Paths is not null)
+        {
+            return ModOrganizer2Support.ReadPluginLoadOrder(modOrganizer2Paths).ToList();
+        }
+
         var candidates = new[]
         {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Skyrim Special Edition", "loadorder.txt"),
@@ -301,6 +326,7 @@ public sealed partial class ScanFileResolver
         Staging = 0,
         DeployedData = 1,
         GameData = 2,
+        Mo2ManagedMod = 3,
     }
 
     private sealed record ArchiveCandidate(string ArchivePath, string DisplayRootPath, ArchiveCandidateOrigin Origin);

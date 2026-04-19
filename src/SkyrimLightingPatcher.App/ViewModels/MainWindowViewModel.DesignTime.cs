@@ -148,4 +148,23 @@ public partial class MainWindowViewModel
             return Task.FromResult<string?>(@"C:\Games\Skyrim Special Edition\Data");
         }
     }
+
+    private sealed class DesignTimeModOrganizer2PathResolver : IModOrganizer2PathResolver
+    {
+        public Task<ModOrganizer2Instance?> TryResolveSkyrimSeAsync(
+            ModOrganizer2InstanceKind? preferredKind = null,
+            CancellationToken cancellationToken = default)
+        {
+            var instanceKind = preferredKind ?? ModOrganizer2InstanceKind.Global;
+            return Task.FromResult<ModOrganizer2Instance?>(new ModOrganizer2Instance(
+                @"C:\Users\Example\AppData\Local\ModOrganizer\Skyrim Special Edition",
+                @"C:\Users\Example\AppData\Local\ModOrganizer\Skyrim Special Edition\mods",
+                @"C:\Users\Example\AppData\Local\ModOrganizer\Skyrim Special Edition\profiles",
+                "Default",
+                instanceKind == ModOrganizer2InstanceKind.Portable
+                    ? "Detected Mod Organizer 2 Skyrim SE portable instance."
+                    : "Detected Mod Organizer 2 Skyrim SE global instance.",
+                instanceKind));
+        }
+    }
 }

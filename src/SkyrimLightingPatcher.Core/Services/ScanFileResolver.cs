@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using SkyrimLightingPatcher.Core.Interfaces;
@@ -23,17 +22,27 @@ public sealed partial class ScanFileResolver : IScanFileResolver
     /// Finds candidate mesh sources under the selected root, then chooses winners by output-relative path.
     /// Loose files are applied after archives so they override archive-backed entries.
     /// </summary>
-    public async Task<IReadOnlyList<MeshSource>> ResolveFilePathsAsync(string rootPath, string? skyrimDataPath = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<MeshSource>> ResolveFilePathsAsync(
+        string rootPath,
+        string? skyrimDataPath = null,
+        ModManagerKind modManager = ModManagerKind.Vortex,
+        CancellationToken cancellationToken = default)
     {
+        ModOrganizer2Paths? modOrganizer2Paths = null;
+        if (modManager == ModManagerKind.ModOrganizer2)
+        {
+            _ = ModOrganizer2Support.TryLoadFromRootPath(rootPath, out modOrganizer2Paths);
+        }
+
         var winners = new Dictionary<string, MeshSource>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var archiveSource in await ResolveArchiveSourcesAsync(rootPath, skyrimDataPath, cancellationToken).ConfigureAwait(false))
+        foreach (var archiveSource in await ResolveArchiveSourcesAsync(rootPath, skyrimDataPath, modManager, modOrganizer2Paths, cancellationToken).ConfigureAwait(false))
         {
             cancellationToken.ThrowIfCancellationRequested();
             winners[PathUtility.NormalizeForComparison(archiveSource.OutputRelativePath)] = archiveSource;
         }
 
-        foreach (var looseSource in await ResolveLooseSourcesAsync(rootPath, cancellationToken).ConfigureAwait(false))
+        foreach (var looseSource in await ResolveLooseSourcesAsync(rootPath, modManager, modOrganizer2Paths, cancellationToken).ConfigureAwait(false))
         {
             cancellationToken.ThrowIfCancellationRequested();
             winners[PathUtility.NormalizeForComparison(looseSource.OutputRelativePath)] = looseSource;
@@ -83,8 +92,17 @@ public sealed partial class ScanFileResolver : IScanFileResolver
         return extractedPath;
     }
 
-    private async Task<IReadOnlyList<MeshSource>> ResolveLooseSourcesAsync(string rootPath, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<MeshSource>> ResolveLooseSourcesAsync(
+        string rootPath,
+        ModManagerKind modManager,
+        ModOrganizer2Paths? modOrganizer2Paths,
+        CancellationToken cancellationToken)
     {
+        if (modManager == ModManagerKind.ModOrganizer2 && modOrganizer2Paths is not null)
+        {
+            return await ResolveMo2LooseSourcesAsync(rootPath, modOrganizer2Paths, cancellationToken).ConfigureAwait(false);
+        }
+
         IReadOnlyList<string> filePaths;
         if (IsVortexStagingFolder(rootPath))
         {
@@ -102,33 +120,107 @@ public sealed partial class ScanFileResolver : IScanFileResolver
             .ToArray();
     }
 
-    private async Task<IReadOnlyList<MeshSource>> ResolveArchiveSourcesAsync(string rootPath, string? skyrimDataPath, CancellationToken cancellationToken)
+    private Task<IReadOnlyList<MeshSource>> ResolveMo2LooseSourcesAsync(
+        string rootPath,
+        ModOrganizer2Paths modOrganizer2Paths,
+        CancellationToken cancellationToken)
     {
-        var activeVortexSources = await TryResolveActiveVortexSourcesAsync(rootPath, cancellationToken).ConfigureAwait(false);
-        var archiveCandidates = new List<ArchiveCandidate>();
-        archiveCandidates.AddRange(
-            Directory.EnumerateFiles(rootPath, "*.bsa", SearchOption.AllDirectories)
-                .Select(path => new ArchiveCandidate(path, rootPath, ArchiveCandidateOrigin.Staging)));
-
-        foreach (var deploymentRoot in await TryResolveDeployedDataRootsAsync(rootPath, cancellationToken).ConfigureAwait(false))
+        var enabledMods = ModOrganizer2Support.ReadEnabledManagedMods(modOrganizer2Paths);
+        if (enabledMods.Count == 0)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            archiveCandidates.AddRange(
-                Directory.EnumerateFiles(deploymentRoot, "*.bsa", SearchOption.TopDirectoryOnly)
-                    .Select(path => new ArchiveCandidate(path, deploymentRoot, ArchiveCandidateOrigin.DeployedData)));
+            return Task.FromResult<IReadOnlyList<MeshSource>>([]);
         }
 
-        if (!string.IsNullOrWhiteSpace(skyrimDataPath) && Directory.Exists(skyrimDataPath))
+        var sources = new List<MeshSource>();
+        foreach (var modName in enabledMods)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var modRoot = Path.Combine(modOrganizer2Paths.ModsPath, modName);
+            if (!Directory.Exists(modRoot) || !PathUtility.IsUnderRoot(modOrganizer2Paths.ModsPath, modRoot))
+            {
+                continue;
+            }
+
+            foreach (var filePath in Directory.EnumerateFiles(modRoot, "*.nif", SearchOption.AllDirectories))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (PatchOutputPaths.IsFileInsideManagedOutputRoot(rootPath, filePath))
+                {
+                    continue;
+                }
+
+                sources.Add(CreateMo2LooseSource(rootPath, modOrganizer2Paths.ModsPath, filePath));
+            }
+        }
+
+        var resolvedSources = sources
+            .OrderBy(static source => source.DisplayPath, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return Task.FromResult<IReadOnlyList<MeshSource>>(resolvedSources);
+    }
+
+    private async Task<IReadOnlyList<MeshSource>> ResolveArchiveSourcesAsync(
+        string rootPath,
+        string? skyrimDataPath,
+        ModManagerKind modManager,
+        ModOrganizer2Paths? modOrganizer2Paths,
+        CancellationToken cancellationToken)
+    {
+        HashSet<string>? activeVortexSources = null;
+        Dictionary<string, int>? mo2EnabledModOrder = null;
+        var archiveCandidates = new List<ArchiveCandidate>();
+
+        if (modManager == ModManagerKind.ModOrganizer2 && modOrganizer2Paths is not null)
+        {
+            var enabledMods = ModOrganizer2Support.ReadEnabledManagedMods(modOrganizer2Paths);
+            mo2EnabledModOrder = enabledMods
+                .Select((name, index) => new KeyValuePair<string, int>(name, index))
+                .ToDictionary(static pair => pair.Key, static pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+            foreach (var modName in enabledMods)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var modRoot = Path.Combine(modOrganizer2Paths.ModsPath, modName);
+                if (!Directory.Exists(modRoot) || !PathUtility.IsUnderRoot(modOrganizer2Paths.ModsPath, modRoot))
+                {
+                    continue;
+                }
+
+                archiveCandidates.AddRange(
+                    Directory.EnumerateFiles(modRoot, "*.bsa", SearchOption.AllDirectories)
+                        .Select(path => new ArchiveCandidate(path, modOrganizer2Paths.ModsPath, ArchiveCandidateOrigin.Mo2ManagedMod)));
+            }
+        }
+        else
+        {
+            activeVortexSources = await TryResolveActiveVortexSourcesAsync(rootPath, cancellationToken).ConfigureAwait(false);
             archiveCandidates.AddRange(
-                Directory.EnumerateFiles(skyrimDataPath, "*.bsa", SearchOption.TopDirectoryOnly)
-                    .Where(static path => Path.GetFileName(path).Contains("meshes", StringComparison.OrdinalIgnoreCase))
-                    .Select(path => new ArchiveCandidate(path, skyrimDataPath, ArchiveCandidateOrigin.GameData)));
+                Directory.EnumerateFiles(rootPath, "*.bsa", SearchOption.AllDirectories)
+                    .Select(path => new ArchiveCandidate(path, rootPath, ArchiveCandidateOrigin.Staging)));
+
+            foreach (var deploymentRoot in await TryResolveDeployedDataRootsAsync(rootPath, cancellationToken).ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                archiveCandidates.AddRange(
+                    Directory.EnumerateFiles(deploymentRoot, "*.bsa", SearchOption.TopDirectoryOnly)
+                        .Select(path => new ArchiveCandidate(path, deploymentRoot, ArchiveCandidateOrigin.DeployedData)));
+            }
+
+            if (!string.IsNullOrWhiteSpace(skyrimDataPath) && Directory.Exists(skyrimDataPath))
+            {
+                archiveCandidates.AddRange(
+                    Directory.EnumerateFiles(skyrimDataPath, "*.bsa", SearchOption.TopDirectoryOnly)
+                        .Where(static path => Path.GetFileName(path).Contains("meshes", StringComparison.OrdinalIgnoreCase))
+                        .Select(path => new ArchiveCandidate(path, skyrimDataPath, ArchiveCandidateOrigin.GameData)));
+            }
         }
 
         var archives = archiveCandidates
             .Distinct(ArchiveCandidatePathComparer.Instance)
-            .OrderBy(candidate => GetArchivePriority(rootPath, candidate.ArchivePath), Comparer<(int Group, int PluginIndex, string RelativePath)>.Default)
+            .OrderBy(
+                candidate => GetArchivePriority(rootPath, candidate, modManager, modOrganizer2Paths, mo2EnabledModOrder),
+                Comparer<(int Group, int PluginIndex, string RelativePath)>.Default)
             .ThenBy(static candidate => candidate.ArchivePath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -138,8 +230,14 @@ public sealed partial class ScanFileResolver : IScanFileResolver
             cancellationToken.ThrowIfCancellationRequested();
 
             var archivePath = archive.ArchivePath;
-            var archiveDisplayPath = PathUtility.GetRelativeOrFileName(rootPath, archivePath);
-            var sourceModName = GetSourceModName(rootPath, archiveDisplayPath);
+            var archiveDisplayPath = BuildArchiveDisplayPath(rootPath, archive);
+            var sourceModName = archive.Origin switch
+            {
+                ArchiveCandidateOrigin.Staging => GetSourceModNameForVortex(rootPath, archiveDisplayPath),
+                ArchiveCandidateOrigin.Mo2ManagedMod => GetSourceModNameFromRelativePath(archiveDisplayPath),
+                _ => null,
+            };
+
             if (archive.Origin == ArchiveCandidateOrigin.Staging &&
                 activeVortexSources is not null &&
                 !string.IsNullOrWhiteSpace(sourceModName) &&
@@ -156,11 +254,22 @@ public sealed partial class ScanFileResolver : IScanFileResolver
 
             foreach (var entry in archiveIndex.MeshEntries)
             {
-                sources.Add(CreateArchiveSource(rootPath, archive, entry.EntryPath));
+                sources.Add(CreateArchiveSource(archive, archiveDisplayPath, entry.EntryPath, sourceModName));
             }
         }
 
         return sources;
+    }
+
+    private static string BuildArchiveDisplayPath(string rootPath, ArchiveCandidate archive)
+    {
+        return archive.Origin switch
+        {
+            ArchiveCandidateOrigin.DeployedData => BuildDeployedArchiveDisplayPath(archive.DisplayRootPath, archive.ArchivePath),
+            ArchiveCandidateOrigin.GameData => BuildDeployedArchiveDisplayPath(archive.DisplayRootPath, archive.ArchivePath),
+            ArchiveCandidateOrigin.Mo2ManagedMod => PathUtility.GetRelativeOrFileName(archive.DisplayRootPath, archive.ArchivePath),
+            _ => PathUtility.GetRelativeOrFileName(rootPath, archive.ArchivePath),
+        };
     }
 
     private static async Task<HashSet<string>?> TryResolveActiveVortexSourcesAsync(string rootPath, CancellationToken cancellationToken)
@@ -231,21 +340,28 @@ public sealed partial class ScanFileResolver : IScanFileResolver
             PatchOutputPaths.GetOutputRelativePath(rootPath, filePath),
             filePath,
             MeshSourceKind.Loose,
-            GetSourceModName(rootPath, displayPath));
+            GetSourceModNameForVortex(rootPath, displayPath));
     }
 
-    private static MeshSource CreateArchiveSource(string rootPath, ArchiveCandidate archive, string entryPath)
+    private static MeshSource CreateMo2LooseSource(string rootPath, string modsPath, string filePath)
     {
-        var archiveDisplayPath = archive.Origin switch
-        {
-            ArchiveCandidateOrigin.DeployedData => BuildDeployedArchiveDisplayPath(archive.DisplayRootPath, archive.ArchivePath),
-            ArchiveCandidateOrigin.GameData => BuildDeployedArchiveDisplayPath(archive.DisplayRootPath, archive.ArchivePath),
-            _ => PathUtility.GetRelativeOrFileName(rootPath, archive.ArchivePath),
-        };
+        var displayPath = PathUtility.GetRelativeOrFileName(modsPath, filePath);
+        return new MeshSource(
+            $"loose|{Path.GetFullPath(filePath)}",
+            displayPath,
+            PatchOutputPaths.GetOutputRelativePath(rootPath, filePath),
+            filePath,
+            MeshSourceKind.Loose,
+            GetSourceModNameFromRelativePath(displayPath));
+    }
+
+    private static MeshSource CreateArchiveSource(
+        ArchiveCandidate archive,
+        string archiveDisplayPath,
+        string entryPath,
+        string? sourceModName)
+    {
         var displayPath = $"{archiveDisplayPath} -> {entryPath}";
-        var sourceModName = archive.Origin == ArchiveCandidateOrigin.Staging
-            ? GetSourceModName(rootPath, archiveDisplayPath)
-            : null;
         return new MeshSource(
             $"archive|{Path.GetFullPath(archive.ArchivePath)}|{entryPath}",
             displayPath,
@@ -273,16 +389,21 @@ public sealed partial class ScanFileResolver : IScanFileResolver
         return path.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
     }
 
-    private static string? GetSourceModName(string rootPath, string relativePath)
+    private static string? GetSourceModNameFromRelativePath(string relativePath)
+    {
+        var normalized = PathUtility.NormalizeSlashes(relativePath);
+        var segments = normalized.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+        return segments.Length > 1 ? segments[0] : null;
+    }
+
+    private static string? GetSourceModNameForVortex(string rootPath, string relativePath)
     {
         if (!IsVortexStagingFolder(rootPath))
         {
             return null;
         }
 
-        var normalized = PathUtility.NormalizeSlashes(relativePath);
-        var segments = normalized.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
-        return segments.Length > 1 ? segments[0] : null;
+        return GetSourceModNameFromRelativePath(relativePath);
     }
 
     private static bool IsVortexStagingFolder(string rootPath)
@@ -394,5 +515,4 @@ public sealed partial class ScanFileResolver : IScanFileResolver
 
         return currentPath;
     }
-
 }

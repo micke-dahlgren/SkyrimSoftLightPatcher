@@ -32,7 +32,11 @@ public partial class MainWindowViewModel
             ResetScanPreview(clearScanStarted: false);
             var progress = new Progress<ScanProgressUpdate>(ApplyProgress);
             var report = await scanService.ScanAsync(
-                new ScanRequest(RootPath, CreatePatchSettings(), HasSkyrimDataPath ? SkyrimDataPath : null),
+                new ScanRequest(
+                    RootPath,
+                    CreatePatchSettings(),
+                    HasSkyrimDataPath ? SkyrimDataPath : null,
+                    GetSelectedModManagerKind()),
                 progress,
                 scanCancellationTokenSource.Token);
             currentReport = report;
@@ -70,12 +74,18 @@ public partial class MainWindowViewModel
 
     private async Task DetectVortexAsync()
     {
-        await RunBusyOperationAsync("Looking for a Vortex staging folder...", async () =>
+        var manager = GetSelectedModManagerKind();
+        var managerLabel = GetSelectedModManagerLabel();
+        var preferredMo2Kind = GetSelectedModOrganizer2InstanceKind();
+
+        await RunBusyOperationAsync($"Looking for {managerLabel} folders...", async () =>
         {
-            var detected = await TryDetectAndApplyVortexRootAsync(forceStatusMessage: true);
+            var detected = manager == ModManagerKind.ModOrganizer2
+                ? await TryDetectAndApplyModOrganizer2RootAsync(forceStatusMessage: true, preferredMo2Kind)
+                : await TryDetectAndApplyVortexRootAsync(forceStatusMessage: true);
             if (!detected)
             {
-                SetStatusError("No Skyrim SE Vortex staging folder was detected.");
+                SetStatusError($"No Skyrim SE {managerLabel} folder was detected.");
             }
         });
     }
@@ -136,8 +146,11 @@ public partial class MainWindowViewModel
             var writtenFiles = manifest.Files.Count(static file => file.Status == "Patched");
             var failedFiles = manifest.Files.Count(static file => file.Status == "Failed");
             var replacementText = manifest.ReplacedExistingOutput ? "Replaced existing output mod." : "Created output mod.";
+            var managerInstructions = GetSelectedModManagerKind() == ModManagerKind.ModOrganizer2
+                ? "Install that archive in Mod Organizer 2 and place it below the source mods so it wins conflicts."
+                : "Import that archive into Vortex and make it win conflicts against the source mods.";
             StatusMessage =
-                $"{replacementText} Wrote {writtenFiles} file(s), failed {failedFiles}. Archive: {manifest.OutputArchivePath}. Import that archive into Vortex and make it win conflicts against the source mods. Rebuild if your mesh setup changes.";
+                $"{replacementText} Wrote {writtenFiles} file(s), failed {failedFiles}. Archive: {manifest.OutputArchivePath}. {managerInstructions} Rebuild if your mesh setup changes.";
             StatusColor = failedFiles > 0 ? "#FFB3B3" : "#B9F6CA";
             CurrentOutputPath = manifest.OutputArchivePath;
             await LoadCurrentOutputAsync();
@@ -266,18 +279,18 @@ public partial class MainWindowViewModel
     private void ApplyReport(ScanReport report)
     {
         ModGroups.Clear();
-        var isVortexStagingRoot = File.Exists(Path.Combine(report.Request.RootPath, "__vortex_staging_folder"));
+        var useSourceModGrouping = report.PreviewFiles.Any(file => !string.IsNullOrWhiteSpace(file.Source?.SourceModName));
 
         foreach (var group in report.PreviewFiles
-                     .GroupBy(file => GetPreviewGroupName(report.Request.RootPath, file, isVortexStagingRoot), StringComparer.OrdinalIgnoreCase)
+                     .GroupBy(file => GetPreviewGroupName(report.Request.RootPath, file, useSourceModGrouping), StringComparer.OrdinalIgnoreCase)
                      .OrderBy(static group => group.Key, StringComparer.OrdinalIgnoreCase))
         {
             var fileItems = group
-                .OrderBy(file => GetPreviewSortKey(report.Request.RootPath, file, isVortexStagingRoot), StringComparer.OrdinalIgnoreCase)
+                .OrderBy(file => GetPreviewSortKey(report.Request.RootPath, file, useSourceModGrouping), StringComparer.OrdinalIgnoreCase)
                 .Select(file => new FileScanItemViewModel
                 {
                     SourceResult = file,
-                    DisplayPath = GetPreviewDisplayPath(report.Request.RootPath, file, isVortexStagingRoot),
+                    DisplayPath = GetPreviewDisplayPath(report.Request.RootPath, file, useSourceModGrouping),
                     Summary = $"{file.PatchCandidateCount} patchable shape(s)",
                     PatchCandidateCountText = $"{file.PatchCandidateCount} patchable",
                     IsExpanded = false,
@@ -468,14 +481,14 @@ public partial class MainWindowViewModel
             : $"{selectedGroups} mod(s), {selectedFiles} file(s), and {selectedShapes} shape(s) selected for patching.";
     }
 
-    private static string GetPreviewGroupName(string rootPath, FileScanResult file, bool isVortexStagingRoot)
+    private static string GetPreviewGroupName(string rootPath, FileScanResult file, bool useSourceModGrouping)
     {
         if (TryGetGameDataMeshCategory(file, out var dataCategory))
         {
             return dataCategory;
         }
 
-        if (isVortexStagingRoot && !string.IsNullOrWhiteSpace(file.Source?.SourceModName))
+        if (useSourceModGrouping && !string.IsNullOrWhiteSpace(file.Source?.SourceModName))
         {
             return file.Source.SourceModName!;
         }
@@ -483,7 +496,7 @@ public partial class MainWindowViewModel
         var relativePath = GetRelativePath(rootPath, file.FilePath);
         var segments = relativePath.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
 
-        if (isVortexStagingRoot && segments.Length > 1)
+        if (useSourceModGrouping && segments.Length > 1)
         {
             return segments[0];
         }
@@ -492,7 +505,7 @@ public partial class MainWindowViewModel
         return string.IsNullOrWhiteSpace(rootName) ? "Selected Root" : rootName;
     }
 
-    private static string GetPreviewDisplayPath(string rootPath, FileScanResult file, bool isVortexStagingRoot)
+    private static string GetPreviewDisplayPath(string rootPath, FileScanResult file, bool useSourceModGrouping)
     {
         if (TryGetGameDataDisplayPath(file, out var dataDisplayPath))
         {
@@ -501,7 +514,7 @@ public partial class MainWindowViewModel
 
         if (file.Source is not null)
         {
-            if (!isVortexStagingRoot || string.IsNullOrWhiteSpace(file.Source.SourceModName))
+            if (!useSourceModGrouping || string.IsNullOrWhiteSpace(file.Source.SourceModName))
             {
                 return file.Source.DisplayPath;
             }
@@ -511,7 +524,7 @@ public partial class MainWindowViewModel
 
         var relativePath = GetRelativePath(rootPath, file.FilePath);
 
-        if (!isVortexStagingRoot)
+        if (!useSourceModGrouping)
         {
             return relativePath;
         }
@@ -522,9 +535,9 @@ public partial class MainWindowViewModel
             : relativePath;
     }
 
-    private static string GetPreviewSortKey(string rootPath, FileScanResult file, bool isVortexStagingRoot)
+    private static string GetPreviewSortKey(string rootPath, FileScanResult file, bool useSourceModGrouping)
     {
-        return GetPreviewDisplayPath(rootPath, file, isVortexStagingRoot);
+        return GetPreviewDisplayPath(rootPath, file, useSourceModGrouping);
     }
 
     private static string FormatValueText(ShapeScanResult shape)
@@ -704,6 +717,51 @@ public partial class MainWindowViewModel
         return true;
     }
 
+    private async Task<bool> TryDetectAndApplyModOrganizer2RootAsync(
+        bool forceStatusMessage,
+        ModOrganizer2InstanceKind? preferredKind)
+    {
+        var detectedInstance = await modOrganizer2PathResolver.TryResolveSkyrimSeAsync(preferredKind);
+        if (detectedInstance is null)
+        {
+            return false;
+        }
+
+        var currentRootIsSame = !string.IsNullOrWhiteSpace(RootPath) &&
+                                Directory.Exists(RootPath) &&
+                                string.Equals(
+                                    Path.GetFullPath(RootPath),
+                                    Path.GetFullPath(detectedInstance.InstancePath),
+                                    StringComparison.OrdinalIgnoreCase);
+
+        RootPath = detectedInstance.InstancePath;
+        if (!HasSkyrimDataPath)
+        {
+            var detectedDataPath = await vortexPathResolver.TryResolveSkyrimDataPathAsync();
+            if (!string.IsNullOrWhiteSpace(detectedDataPath))
+            {
+                SkyrimDataPath = detectedDataPath;
+            }
+        }
+
+        CurrentOutputPath = null;
+        hasPatchedInSession = false;
+        OnPropertyChanged(nameof(HasPatchOutputVisible));
+        IsSettingsLocked = false;
+        ResetScanPreview();
+
+        if (forceStatusMessage || !currentRootIsSame)
+        {
+            var profileSuffix = string.IsNullOrWhiteSpace(detectedInstance.SelectedProfileName)
+                ? string.Empty
+                : $" Profile: {detectedInstance.SelectedProfileName}.";
+            SetStatusInfo($"{detectedInstance.Source} Using {RootPath}.{profileSuffix}");
+        }
+
+        await PersistSettingsSafeAsync();
+        return true;
+    }
+
     private bool CanScan()
     {
         return !IsBusy && HasRootPath && HasOutputDestination && HasAnyEnabledCategory;
@@ -771,6 +829,35 @@ public partial class MainWindowViewModel
     {
         StatusMessage = message;
         StatusColor = "#FFB3B3";
+    }
+
+    private ModManagerKind GetSelectedModManagerKind()
+    {
+        return SelectedModManager.StartsWith("Mod Organizer 2", StringComparison.OrdinalIgnoreCase)
+            ? ModManagerKind.ModOrganizer2
+            : ModManagerKind.Vortex;
+    }
+
+    private ModOrganizer2InstanceKind? GetSelectedModOrganizer2InstanceKind()
+    {
+        if (string.Equals(SelectedModManager, "Mod Organizer 2 (Global)", StringComparison.OrdinalIgnoreCase))
+        {
+            return ModOrganizer2InstanceKind.Global;
+        }
+
+        if (string.Equals(SelectedModManager, "Mod Organizer 2 (Portable)", StringComparison.OrdinalIgnoreCase))
+        {
+            return ModOrganizer2InstanceKind.Portable;
+        }
+
+        return null;
+    }
+
+    private string GetSelectedModManagerLabel()
+    {
+        return GetSelectedModManagerKind() == ModManagerKind.ModOrganizer2
+            ? SelectedModManager
+            : "Vortex";
     }
 
 }
