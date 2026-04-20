@@ -50,6 +50,81 @@ public sealed class PatchExecutorTests
         Assert.Contains(progressUpdates, static update => update.CurrentFilePath == "__status__: Creating output archive (.zip)...");
     }
 
+    [Fact]
+    public async Task ExecuteAsync_UsesProvidedOutputRootPath()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-patch-tests", Guid.NewGuid().ToString("N"));
+        var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
+        using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+        Directory.CreateDirectory(rootPath);
+
+        var sourceFile = Path.Combine(rootPath, "meshes", "sample.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceFile)!);
+        await File.WriteAllTextAsync(sourceFile, "sample");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, new PatchSettings(0.4f, 0.2f)),
+            [
+                new FileScanResult(
+                    sourceFile,
+                    [CreateShapeResult(sourceFile, "Eye", ShapeKind.Eye, 0.1f, 0.4f)]),
+            ]);
+
+        var destinationPath = Path.Combine(rootPath, "custom-output-destination");
+        var outputRootPath = Path.Combine(destinationPath, "Glowing Mesh Patcher Output");
+        var archivePath = Path.Combine(destinationPath, "Glowing Mesh Patcher Output.zip");
+        var defaultManagedPath = Path.Combine(appHome, "GeneratedMods", "Glowing Mesh Patcher Output");
+        var patchExecutor = new PatchExecutor(new PatchPlanner(), new FakePatchMeshService(), new ScanFileResolver(), new BackupStore());
+
+        var manifest = await patchExecutor.ExecuteAsync(report, archivePath, outputRootPath: outputRootPath);
+
+        Assert.Equal(Path.GetFullPath(outputRootPath), manifest.OutputRootPath);
+        Assert.True(Directory.Exists(outputRootPath));
+        Assert.True(File.Exists(archivePath));
+        Assert.All(manifest.Files, file => Assert.StartsWith(
+            Path.GetFullPath(outputRootPath),
+            Path.GetFullPath(file.OutputPath),
+            StringComparison.OrdinalIgnoreCase));
+        Assert.False(Directory.Exists(defaultManagedPath));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenArchiveCreationFails_ThrowsAndKeepsLooseOutput()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-patch-tests", Guid.NewGuid().ToString("N"));
+        var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
+        using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+        Directory.CreateDirectory(rootPath);
+
+        var sourceFile = Path.Combine(rootPath, "meshes", "sample.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceFile)!);
+        await File.WriteAllTextAsync(sourceFile, "sample");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, new PatchSettings(0.4f, 0.2f)),
+            [
+                new FileScanResult(
+                    sourceFile,
+                    [CreateShapeResult(sourceFile, "Eye", ShapeKind.Eye, 0.1f, 0.4f)]),
+            ]);
+
+        var destinationPath = Path.Combine(rootPath, "custom-output-destination");
+        var outputRootPath = Path.Combine(destinationPath, "Glowing Mesh Patcher Output");
+        var archivePath = Path.Combine(destinationPath, "Glowing Mesh Patcher Output.zip");
+        var archiveTempPath = archivePath + ".tmp";
+        Directory.CreateDirectory(archiveTempPath);
+
+        var patchExecutor = new PatchExecutor(new PatchPlanner(), new FakePatchMeshService(), new ScanFileResolver(), new BackupStore());
+        var error = await Assert.ThrowsAsync<PatchArchiveCreationException>(() =>
+            patchExecutor.ExecuteAsync(report, archivePath, outputRootPath: outputRootPath));
+
+        Assert.Equal(Path.GetFullPath(outputRootPath), Path.GetFullPath(error.OutputRootPath));
+        Assert.Equal(Path.GetFullPath(archivePath), Path.GetFullPath(error.OutputArchivePath));
+        Assert.True(Directory.Exists(outputRootPath));
+        Assert.NotEmpty(Directory.EnumerateFiles(outputRootPath, "*.nif", SearchOption.AllDirectories));
+        Assert.False(File.Exists(archivePath));
+    }
+
     private static ShapeScanResult CreateShapeResult(
         string filePath,
         string shapeName,

@@ -26,6 +26,17 @@ public partial class MainWindow : Window
         await viewModel.InitializeAsync();
     }
 
+    private void Window_OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (!viewModel.IsPatching)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        viewModel.NotifyCloseBlockedDuringPatch();
+    }
+
     private async void BrowseRootFolder_OnClick(object? sender, RoutedEventArgs e)
     {
         var options = new FolderPickerOpenOptions

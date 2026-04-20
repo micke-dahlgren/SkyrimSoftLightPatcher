@@ -63,6 +63,79 @@ public sealed class MainWindowViewModelSettingsTests
         Assert.True(persisted.PatchSettings.EnableOther);
     }
 
+    [Fact]
+    public async Task PatchCommand_WhenArchiveCreationFails_ShowsManualArchiveGuidanceAndKeepsOutputFolderVisible()
+    {
+        var rootPath = CreateTempDirectory();
+        var outputDestination = CreateTempDirectory();
+        var sourceFile = Path.Combine(rootPath, "meshes", "sample.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceFile)!);
+        await File.WriteAllTextAsync(sourceFile, "sample");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, new PatchSettings(0.4f, 0.2f)),
+            [
+                new FileScanResult(
+                    sourceFile,
+                    [
+                        new ShapeScanResult(
+                            new NifShapeProbe(
+                                sourceFile,
+                                "sample:Eye",
+                                "Eye",
+                                ShaderMetadata.Empty,
+                                Array.Empty<string>(),
+                                true,
+                                0.1f),
+                            ShapeKind.Eye,
+                            true,
+                            0.4f,
+                            "Eye",
+                            ["Eligible"]),
+                    ]),
+            ]);
+
+        var settingsStore = new RecordingSettingsStore(new AppSettings(null, PatchSettings.Default));
+        var failingPatchExecutor = new ArchiveFailurePatchExecutor();
+        var viewModel = new MainWindowViewModel(
+            settingsStore,
+            new FixedScanService(report),
+            failingPatchExecutor,
+            new NoOpOutputModService(),
+            new NoOpVortexPathResolver(),
+            new NoOpModOrganizer2PathResolver());
+
+        await viewModel.InitializeAsync();
+        viewModel.EnableEye = true;
+        await viewModel.SetRootPathAsync(rootPath);
+        await viewModel.SetOutputDestinationPathAsync(outputDestination);
+
+        await viewModel.ScanCommand.ExecuteAsync(null);
+        await viewModel.PatchCommand.ExecuteAsync(null);
+
+        var expectedOutputRoot = Path.Combine(outputDestination, "Glowing Mesh Patcher Output");
+        Assert.True(Directory.Exists(expectedOutputRoot));
+        Assert.Equal(expectedOutputRoot, viewModel.CurrentOutputPath);
+        Assert.True(viewModel.HasPatchOutputVisible);
+        Assert.Contains("Create a .zip or .7z", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(expectedOutputRoot, viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(failingPatchExecutor.LastOutputArchivePath);
+        Assert.Equal(outputDestination, Path.GetDirectoryName(failingPatchExecutor.LastOutputArchivePath)!);
+        Assert.Matches("^GlowingMeshPatch_[0-9a-f]{6}\\.zip$", Path.GetFileName(failingPatchExecutor.LastOutputArchivePath));
+    }
+
+    [Fact]
+    public void NotifyCloseBlockedDuringPatch_UsesArchiveSpecificWarningWhenFinalizingArchive()
+    {
+        var viewModel = CreateViewModel(new RecordingSettingsStore(AppSettings.Default));
+        viewModel.IsPatching = true;
+        viewModel.BusyStateText = "Creating mod file (.zip)...";
+
+        viewModel.NotifyCloseBlockedDuringPatch();
+
+        Assert.Contains("creating the mod archive", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static MainWindowViewModel CreateViewModel(ISettingsStore settingsStore)
     {
         return new MainWindowViewModel(
@@ -151,13 +224,47 @@ public sealed class MainWindowViewModelSettingsTests
         }
     }
 
+    private sealed class FixedScanService(ScanReport report) : IScanService
+    {
+        public Task<ScanReport> ScanAsync(
+            ScanRequest request,
+            IProgress<ScanProgressUpdate>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(report);
+        }
+    }
+
+    private sealed class ArchiveFailurePatchExecutor : IPatchExecutor
+    {
+        public string? LastOutputArchivePath { get; private set; }
+
+        public Task<PatchRunManifest> ExecuteAsync(
+            ScanReport report,
+            string outputArchivePath,
+            IProgress<PatchProgressUpdate>? progress = null,
+            CancellationToken cancellationToken = default,
+            string? outputRootPath = null)
+        {
+            LastOutputArchivePath = outputArchivePath;
+            var resolvedOutputRootPath = outputRootPath ?? Path.Combine(Path.GetTempPath(), "archive-failure-fallback");
+            Directory.CreateDirectory(resolvedOutputRootPath);
+            File.WriteAllText(Path.Combine(resolvedOutputRootPath, "sample.nif"), "patched");
+            throw new PatchArchiveCreationException(
+                resolvedOutputRootPath,
+                outputArchivePath,
+                new IOException("Test archive failure"));
+        }
+    }
+
     private sealed class NoOpPatchExecutor : IPatchExecutor
     {
         public Task<PatchRunManifest> ExecuteAsync(
             ScanReport report,
             string outputArchivePath,
             IProgress<PatchProgressUpdate>? progress = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string? outputRootPath = null)
         {
             throw new NotSupportedException();
         }

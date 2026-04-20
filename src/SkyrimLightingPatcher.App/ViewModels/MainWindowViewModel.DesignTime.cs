@@ -88,7 +88,8 @@ public partial class MainWindowViewModel
             ScanReport report,
             string outputArchivePath,
             IProgress<PatchProgressUpdate>? progress = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string? outputRootPath = null)
         {
             progress?.Report(new PatchProgressUpdate("example-1.nif", 0, 2, 0, 0));
             progress?.Report(new PatchProgressUpdate("example-1.nif", 1, 2, 1, 0));
@@ -97,7 +98,7 @@ public partial class MainWindowViewModel
             return Task.FromResult(new PatchRunManifest(
                 "design-time",
                 report.Request.RootPath,
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SkyrimLightingPatcher", "GeneratedMods", "Glowing Mesh Patcher Output"),
+                outputRootPath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SkyrimLightingPatcher", "GeneratedMods", "Glowing Mesh Patcher Output"),
                 outputArchivePath,
                 "Glowing Mesh Patcher Output",
                 false,

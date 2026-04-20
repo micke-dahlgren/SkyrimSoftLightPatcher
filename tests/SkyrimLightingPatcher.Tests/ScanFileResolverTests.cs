@@ -349,6 +349,56 @@ public sealed class ScanFileResolverTests
     }
 
     [Fact]
+    public async Task ResolveFilePathsAsync_VortexStagingFolder_ArchiveWinnersFollowDeploymentSourceOrder()
+    {
+        var rootPath = CreateTempDirectory();
+        await File.WriteAllTextAsync(Path.Combine(rootPath, "__vortex_staging_folder"), "marker");
+
+        var winningArchive = Path.Combine(rootPath, "A Last Winner", "assets.bsa");
+        var losingArchive = Path.Combine(rootPath, "B Earlier Loser", "assets.bsa");
+        Directory.CreateDirectory(Path.GetDirectoryName(winningArchive)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(losingArchive)!);
+
+        await TestBsaArchiveBuilder.CreateFromFilesAsync(
+            winningArchive,
+            (@"meshes\actors\character\eyes\shared.nif", Path.Combine(TestDataRoot, "eye_example.nif")));
+        await TestBsaArchiveBuilder.CreateFromFilesAsync(
+            losingArchive,
+            (@"meshes\actors\character\eyes\shared.nif", Path.Combine(TestDataRoot, "eye_example.nif")));
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["stagingPath"] = rootPath,
+            ["files"] = new object?[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["relPath"] = "loser.esp",
+                    ["source"] = "B Earlier Loser",
+                    ["target"] = string.Empty,
+                    ["time"] = 1L,
+                },
+                new Dictionary<string, object?>
+                {
+                    ["relPath"] = "winner.esp",
+                    ["source"] = "A Last Winner",
+                    ["target"] = string.Empty,
+                    ["time"] = 2L,
+                },
+            },
+        };
+
+        await File.WriteAllBytesAsync(Path.Combine(rootPath, "vortex.deployment.msgpack"), EncodeMessagePack(payload));
+
+        var resolver = new ScanFileResolver();
+        var files = await resolver.ResolveFilePathsAsync(rootPath);
+
+        var file = Assert.Single(files);
+        Assert.Equal(MeshSourceKind.Archive, file.Kind);
+        Assert.Equal("A Last Winner", file.SourceModName);
+    }
+
+    [Fact]
     public async Task ResolveFilePathsAsync_VortexStagingFolder_IncludesArchivesFromDeployedDataRoot()
     {
         var rootPath = CreateTempDirectory();

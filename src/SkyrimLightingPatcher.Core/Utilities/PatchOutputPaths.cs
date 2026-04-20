@@ -1,9 +1,14 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace SkyrimLightingPatcher.Core.Utilities;
 
 public static class PatchOutputPaths
 {
     public const string OutputModName = "Glowing Mesh Patcher Output";
     public const string OutputManifestFileName = "softlight-patch-manifest.json";
+    public const string OutputArchivePrefix = "GlowingMeshPatch";
+    public const int OutputArchiveHashLength = 6;
     private const string GeneratedModsFolderName = "GeneratedMods";
     private const string VortexMarkerFileName = "__vortex_staging_folder";
 
@@ -23,6 +28,19 @@ public static class PatchOutputPaths
     public static string GetManifestCopyPath(string outputRootPath)
     {
         return Path.Combine(outputRootPath, OutputManifestFileName);
+    }
+
+    public static string CreateStampedArchiveFileName(string seed)
+    {
+        if (string.IsNullOrWhiteSpace(seed))
+        {
+            throw new ArgumentException("A non-empty seed is required to generate an archive name.", nameof(seed));
+        }
+
+        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
+        var hashHex = Convert.ToHexString(hashBytes).ToLowerInvariant();
+        var suffix = hashHex[..OutputArchiveHashLength];
+        return $"{OutputArchivePrefix}_{suffix}.zip";
     }
 
     public static string GetOutputRelativePath(string rootPath, string filePath)
@@ -63,7 +81,7 @@ public static class PatchOutputPaths
         return segments.Length > 1 ? segments[0] : null;
     }
 
-    public static bool IsManagedOutputRoot(string rootPath, string outputRootPath)
+    public static bool IsManagedOutputRoot(string rootPath, string outputRootPath, string? outputArchivePath = null)
     {
         var actualOutputRoot = Path.GetFullPath(outputRootPath);
         var expectedFromScanRoot = Path.GetFullPath(GetOutputRootPath(rootPath));
@@ -73,7 +91,14 @@ public static class PatchOutputPaths
         }
 
         var expectedAppHomeOutput = Path.GetFullPath(Path.Combine(GetApplicationHomeDirectory(), GeneratedModsFolderName, OutputModName));
-        return string.Equals(expectedAppHomeOutput, actualOutputRoot, StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(expectedAppHomeOutput, actualOutputRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var archiveDerivedOutputRoot = TryGetManagedOutputRootFromArchive(outputArchivePath);
+        return archiveDerivedOutputRoot is not null &&
+               string.Equals(archiveDerivedOutputRoot, actualOutputRoot, StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool IsFileInsideManagedOutputRoot(string scanRootPath, string filePath)
@@ -86,5 +111,25 @@ public static class PatchOutputPaths
     {
         return Directory.Exists(rootPath) &&
                File.Exists(Path.Combine(rootPath, VortexMarkerFileName));
+    }
+
+    private static string? TryGetManagedOutputRootFromArchive(string? outputArchivePath)
+    {
+        if (string.IsNullOrWhiteSpace(outputArchivePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var archiveDirectory = Path.GetDirectoryName(Path.GetFullPath(outputArchivePath));
+            return string.IsNullOrWhiteSpace(archiveDirectory)
+                ? null
+                : Path.GetFullPath(Path.Combine(archiveDirectory, OutputModName));
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

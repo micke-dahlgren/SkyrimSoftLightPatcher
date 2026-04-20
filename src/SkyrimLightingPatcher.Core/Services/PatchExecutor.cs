@@ -21,18 +21,19 @@ public sealed class PatchExecutor(
         ScanReport report,
         string outputArchivePath,
         IProgress<PatchProgressUpdate>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? outputRootPath = null)
     {
         var plan = patchPlanner.CreatePlan(report);
         var runId = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff");
-        var outputRootPath = PatchOutputPaths.GetOutputRootPath(report.Request.RootPath);
-        var replacedExistingOutput = File.Exists(outputArchivePath);
+        var resolvedOutputRootPath = ResolveOutputRootPath(report.Request.RootPath, outputRootPath);
+        var replacedExistingOutput = File.Exists(outputArchivePath) || Directory.Exists(resolvedOutputRootPath);
         var fileRecords = new List<FilePatchRecord>();
         var filesProcessed = 0;
         var successfulFiles = 0;
         var failedFiles = 0;
 
-        PrepareOutputRoot(report.Request.RootPath, outputRootPath);
+        PrepareOutputRoot(report.Request.RootPath, resolvedOutputRootPath, outputArchivePath);
         ReportProgress(progress, string.Empty, filesProcessed, plan.FileCount, successfulFiles, failedFiles);
 
         foreach (var filePlan in plan.Files)
@@ -41,7 +42,7 @@ public sealed class PatchExecutor(
             ReportProgress(progress, filePlan.FilePath, filesProcessed, plan.FileCount, successfulFiles, failedFiles);
 
             var outputPath = Path.Combine(
-                outputRootPath,
+                resolvedOutputRootPath,
                 filePlan.Source.OutputRelativePath);
 
             try
@@ -92,7 +93,7 @@ public sealed class PatchExecutor(
         var manifest = new PatchRunManifest(
             runId,
             report.Request.RootPath,
-            outputRootPath,
+            resolvedOutputRootPath,
             outputArchivePath,
             PatchOutputPaths.OutputModName,
             replacedExistingOutput,
@@ -103,7 +104,7 @@ public sealed class PatchExecutor(
         ReportProgress(progress, ProgressMessageFinalizingManifest, filesProcessed, plan.FileCount, successfulFiles, failedFiles);
         await WriteOutputManifestAsync(manifest, cancellationToken).ConfigureAwait(false);
         ReportProgress(progress, ProgressMessageCreatingArchive, filesProcessed, plan.FileCount, successfulFiles, failedFiles);
-        CreateArchive(outputRootPath, outputArchivePath);
+        CreateArchive(resolvedOutputRootPath, outputArchivePath);
         ReportProgress(progress, ProgressMessageWritingRunManifest, filesProcessed, plan.FileCount, successfulFiles, failedFiles);
         await backupStore.WriteManifestAsync(manifest, cancellationToken).ConfigureAwait(false);
         ReportProgress(progress, ProgressMessageCompleted, filesProcessed, plan.FileCount, successfulFiles, failedFiles);
@@ -131,11 +132,21 @@ public sealed class PatchExecutor(
             failedFiles));
     }
 
-    private static void PrepareOutputRoot(string rootPath, string outputRootPath)
+    private static string ResolveOutputRootPath(string rootPath, string? outputRootPath)
+    {
+        if (!string.IsNullOrWhiteSpace(outputRootPath))
+        {
+            return Path.GetFullPath(outputRootPath);
+        }
+
+        return PatchOutputPaths.GetOutputRootPath(rootPath);
+    }
+
+    private static void PrepareOutputRoot(string rootPath, string outputRootPath, string outputArchivePath)
     {
         if (Directory.Exists(outputRootPath))
         {
-            if (!PatchOutputPaths.IsManagedOutputRoot(rootPath, outputRootPath))
+            if (!PatchOutputPaths.IsManagedOutputRoot(rootPath, outputRootPath, outputArchivePath))
             {
                 throw new InvalidOperationException("Refusing to replace an unmanaged output folder.");
             }
@@ -157,21 +168,28 @@ public sealed class PatchExecutor(
 
     private static void CreateArchive(string outputRootPath, string outputArchivePath)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(outputArchivePath)!);
-        var tempArchivePath = outputArchivePath + ".tmp";
-
-        if (File.Exists(tempArchivePath))
+        try
         {
-            File.Delete(tempArchivePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(outputArchivePath)!);
+            var tempArchivePath = outputArchivePath + ".tmp";
+
+            if (File.Exists(tempArchivePath))
+            {
+                File.Delete(tempArchivePath);
+            }
+
+            ZipFile.CreateFromDirectory(outputRootPath, tempArchivePath, CompressionLevel.Optimal, includeBaseDirectory: false);
+
+            if (File.Exists(outputArchivePath))
+            {
+                File.Delete(outputArchivePath);
+            }
+
+            File.Move(tempArchivePath, outputArchivePath);
         }
-
-        ZipFile.CreateFromDirectory(outputRootPath, tempArchivePath, CompressionLevel.Optimal, includeBaseDirectory: false);
-
-        if (File.Exists(outputArchivePath))
+        catch (Exception exception)
         {
-            File.Delete(outputArchivePath);
+            throw new PatchArchiveCreationException(outputRootPath, outputArchivePath, exception);
         }
-
-        File.Move(tempArchivePath, outputArchivePath);
     }
 }

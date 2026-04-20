@@ -13,7 +13,8 @@ public sealed partial class ScanFileResolver
         ArchiveCandidate archiveCandidate,
         ModManagerKind modManager,
         ModOrganizer2Paths? modOrganizer2Paths,
-        IReadOnlyDictionary<string, int>? mo2EnabledModOrder)
+        IReadOnlyDictionary<string, int>? mo2EnabledModOrder,
+        IReadOnlyDictionary<string, int>? vortexSourceOrder)
     {
         var archivePath = archiveCandidate.ArchivePath;
         var relativePath = archiveCandidate.Origin == ArchiveCandidateOrigin.Mo2ManagedMod
@@ -26,7 +27,7 @@ public sealed partial class ScanFileResolver
 
         if (pluginIndex >= 0)
         {
-            return (2, pluginIndex, relativePath);
+            return (4, pluginIndex, relativePath);
         }
 
         if (archiveCandidate.Origin == ArchiveCandidateOrigin.Mo2ManagedMod &&
@@ -36,11 +37,28 @@ public sealed partial class ScanFileResolver
             if (!string.IsNullOrWhiteSpace(sourceModName) &&
                 mo2EnabledModOrder.TryGetValue(sourceModName, out var modIndex))
             {
-                return (1, modIndex, relativePath);
+                return (3, modIndex, relativePath);
             }
         }
 
-        return (0, int.MaxValue, relativePath);
+        if (modManager == ModManagerKind.Vortex &&
+            archiveCandidate.Origin == ArchiveCandidateOrigin.Staging &&
+            vortexSourceOrder is not null)
+        {
+            var sourceModName = GetSourceModNameFromRelativePath(relativePath);
+            if (!string.IsNullOrWhiteSpace(sourceModName) &&
+                vortexSourceOrder.TryGetValue(sourceModName, out var sourceIndex))
+            {
+                return (3, sourceIndex, relativePath);
+            }
+        }
+
+        return archiveCandidate.Origin switch
+        {
+            ArchiveCandidateOrigin.Staging or ArchiveCandidateOrigin.Mo2ManagedMod => (2, int.MaxValue, relativePath),
+            ArchiveCandidateOrigin.DeployedData or ArchiveCandidateOrigin.GameData => (1, int.MaxValue, relativePath),
+            _ => (0, int.MaxValue, relativePath),
+        };
     }
 
     private List<string> GetPluginLoadOrder(ModManagerKind modManager, ModOrganizer2Paths? modOrganizer2Paths)
@@ -81,7 +99,7 @@ public sealed partial class ScanFileResolver
 
     private sealed record VortexDeployment(string? StagingPath, IReadOnlyList<VortexDeploymentFileEntry> Files);
 
-    private sealed record VortexDeploymentFileEntry(string? Source, string? RelativePath, string? TargetPath)
+    private sealed record VortexDeploymentFileEntry(string? Source, string? RelativePath, string? TargetPath, long? DeploymentTime)
     {
         public bool IsMeshNif =>
             !string.IsNullOrWhiteSpace(Source) &&
@@ -117,11 +135,29 @@ public sealed partial class ScanFileResolver
                     files.Add(new VortexDeploymentFileEntry(
                         fileMap.TryGetValue("source", out var sourceValue) ? sourceValue as string : null,
                         fileMap.TryGetValue("relPath", out var relativePathValue) ? relativePathValue as string : null,
-                        fileMap.TryGetValue("target", out var targetValue) ? targetValue as string : null));
+                        fileMap.TryGetValue("target", out var targetValue) ? targetValue as string : null,
+                        fileMap.TryGetValue("time", out var timeValue) ? TryReadInt64(timeValue) : null));
                 }
             }
 
             return new VortexDeployment(stagingPath, files);
+        }
+
+        private static long? TryReadInt64(object? value)
+        {
+            return value switch
+            {
+                null => null,
+                long longValue => longValue,
+                int intValue => intValue,
+                short shortValue => shortValue,
+                sbyte sbyteValue => sbyteValue,
+                byte byteValue => byteValue,
+                ushort ushortValue => ushortValue,
+                uint uintValue => uintValue,
+                ulong ulongValue when ulongValue <= long.MaxValue => (long)ulongValue,
+                _ => null,
+            };
         }
     }
 

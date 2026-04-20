@@ -168,6 +168,7 @@ public sealed partial class ScanFileResolver : IScanFileResolver
         CancellationToken cancellationToken)
     {
         HashSet<string>? activeVortexSources = null;
+        IReadOnlyDictionary<string, int>? vortexSourceOrder = null;
         Dictionary<string, int>? mo2EnabledModOrder = null;
         var archiveCandidates = new List<ArchiveCandidate>();
 
@@ -195,6 +196,7 @@ public sealed partial class ScanFileResolver : IScanFileResolver
         else
         {
             activeVortexSources = await TryResolveActiveVortexSourcesAsync(rootPath, cancellationToken).ConfigureAwait(false);
+            vortexSourceOrder = await TryResolveVortexSourceOrderAsync(rootPath, cancellationToken).ConfigureAwait(false);
             archiveCandidates.AddRange(
                 Directory.EnumerateFiles(rootPath, "*.bsa", SearchOption.AllDirectories)
                     .Select(path => new ArchiveCandidate(path, rootPath, ArchiveCandidateOrigin.Staging)));
@@ -219,7 +221,7 @@ public sealed partial class ScanFileResolver : IScanFileResolver
         var archives = archiveCandidates
             .Distinct(ArchiveCandidatePathComparer.Instance)
             .OrderBy(
-                candidate => GetArchivePriority(rootPath, candidate, modManager, modOrganizer2Paths, mo2EnabledModOrder),
+                candidate => GetArchivePriority(rootPath, candidate, modManager, modOrganizer2Paths, mo2EnabledModOrder, vortexSourceOrder),
                 Comparer<(int Group, int PluginIndex, string RelativePath)>.Default)
             .ThenBy(static candidate => candidate.ArchivePath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -284,6 +286,49 @@ public sealed partial class ScanFileResolver : IScanFileResolver
             .Where(static file => !string.IsNullOrWhiteSpace(file.Source))
             .Select(static file => file.Source!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static async Task<IReadOnlyDictionary<string, int>?> TryResolveVortexSourceOrderAsync(string rootPath, CancellationToken cancellationToken)
+    {
+        var deployment = await TryLoadVortexDeploymentAsync(rootPath, cancellationToken).ConfigureAwait(false);
+        if (deployment is null)
+        {
+            return null;
+        }
+
+        var sourceEntries = deployment.Files
+            .Select((file, index) => new { File = file, Index = index })
+            .Where(static item => !string.IsNullOrWhiteSpace(item.File.Source))
+            .ToArray();
+        if (sourceEntries.Length == 0)
+        {
+            return null;
+        }
+
+        var groupedSources = sourceEntries
+            .GroupBy(static item => item.File.Source!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new
+            {
+                Source = group.Key,
+                MaxDeploymentTime = group.Max(static item => item.File.DeploymentTime ?? long.MinValue),
+                HasDeploymentTime = group.Any(static item => item.File.DeploymentTime.HasValue),
+                LastIndex = group.Max(static item => item.Index),
+            })
+            .ToArray();
+
+        var useDeploymentTime = groupedSources.Any(static source => source.HasDeploymentTime);
+        var orderedSources = useDeploymentTime
+            ? groupedSources
+                .OrderBy(static source => source.MaxDeploymentTime)
+                .ThenBy(static source => source.LastIndex)
+                .ThenBy(static source => source.Source, StringComparer.OrdinalIgnoreCase)
+            : groupedSources
+                .OrderBy(static source => source.LastIndex)
+                .ThenBy(static source => source.Source, StringComparer.OrdinalIgnoreCase);
+
+        return orderedSources
+            .Select((source, index) => new KeyValuePair<string, int>(source.Source, index))
+            .ToDictionary(static pair => pair.Key, static pair => pair.Value, StringComparer.OrdinalIgnoreCase);
     }
 
     private static async Task<IReadOnlyList<string>> TryResolveDeployedDataRootsAsync(string rootPath, CancellationToken cancellationToken)

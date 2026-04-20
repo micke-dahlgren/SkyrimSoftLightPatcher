@@ -127,7 +127,8 @@ public partial class MainWindowViewModel
             return;
         }
 
-        var outputArchivePath = Path.Combine(OutputDestinationPath, $"{PatchOutputPaths.OutputModName}.zip");
+        var outputArchivePath = CreateOutputArchivePath(OutputDestinationPath);
+        var outputRootPath = Path.Combine(OutputDestinationPath, PatchOutputPaths.OutputModName);
         patchCancellationTokenSource?.Dispose();
         patchCancellationTokenSource = new CancellationTokenSource();
         patchStopRequested = false;
@@ -138,19 +139,34 @@ public partial class MainWindowViewModel
         await RunBusyOperationAsync("Patching meshes...", async () =>
         {
             var patchProgress = new Progress<PatchProgressUpdate>(ApplyPatchProgress);
-            var manifest = await patchExecutor.ExecuteAsync(
-                selectedReport,
-                outputArchivePath,
-                patchProgress,
-                patchCancellationTokenSource.Token);
+            PatchRunManifest manifest;
+            try
+            {
+                manifest = await patchExecutor.ExecuteAsync(
+                    selectedReport,
+                    outputArchivePath,
+                    patchProgress,
+                    patchCancellationTokenSource.Token,
+                    outputRootPath);
+            }
+            catch (PatchArchiveCreationException archiveException)
+            {
+                HandleArchiveCreationFailure(archiveException);
+                return;
+            }
+
+            var cleanupSucceeded = TryCleanupGeneratedOutputRoot(manifest, out var cleanupError);
             var writtenFiles = manifest.Files.Count(static file => file.Status == "Patched");
             var failedFiles = manifest.Files.Count(static file => file.Status == "Failed");
             var replacementText = manifest.ReplacedExistingOutput ? "Replaced existing output mod." : "Created output mod.";
             var managerInstructions = GetSelectedModManagerKind() == ModManagerKind.ModOrganizer2
                 ? "Install that archive in Mod Organizer 2 and place it below the source mods so it wins conflicts."
                 : "Import that archive into Vortex and make it win conflicts against the source mods.";
+            var cleanupMessage = cleanupSucceeded
+                ? " Removed temporary loose files folder."
+                : $" Kept loose files folder: {manifest.OutputRootPath}. {cleanupError}";
             StatusMessage =
-                $"{replacementText} Wrote {writtenFiles} file(s), failed {failedFiles}. Archive: {manifest.OutputArchivePath}. {managerInstructions} Rebuild if your mesh setup changes.";
+                $"{replacementText} Wrote {writtenFiles} file(s), failed {failedFiles}. Archive: {manifest.OutputArchivePath}.{cleanupMessage} {managerInstructions} Rebuild if your mesh setup changes.";
             StatusColor = failedFiles > 0 ? "#FFB3B3" : "#B9F6CA";
             CurrentOutputPath = manifest.OutputArchivePath;
             await LoadCurrentOutputAsync();
@@ -396,6 +412,90 @@ public partial class MainWindowViewModel
         }
 
         return statusText;
+    }
+
+    private void HandleArchiveCreationFailure(PatchArchiveCreationException archiveException)
+    {
+        var outputRootPath = archiveException.OutputRootPath;
+        if (!string.IsNullOrWhiteSpace(outputRootPath))
+        {
+            CurrentOutputPath = outputRootPath;
+            hasPatchedInSession = Directory.Exists(outputRootPath);
+            OnPropertyChanged(nameof(HasPatchOutputVisible));
+        }
+
+        var archiveError = archiveException.InnerException?.Message ?? archiveException.Message;
+        StatusMessage =
+            $"Patched files were created, but creating the archive failed: {archiveError}. Loose files are in {archiveException.OutputRootPath}. Create a .zip or .7z from that folder before installing it as a mod.";
+        StatusColor = "#FFB3B3";
+        patchRunDirty = true;
+        RefreshCommandState();
+    }
+
+    public string GetCloseBlockedMessage()
+    {
+        if (IsPatching &&
+            (BusyStateText.StartsWith("Creating mod file", StringComparison.OrdinalIgnoreCase) ||
+             BusyStateText.StartsWith("Preparing mod files", StringComparison.OrdinalIgnoreCase) ||
+             BusyStateText.StartsWith("Saving patch metadata", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Still creating the mod archive. Please wait for completion or click Stop Patch before closing.";
+        }
+
+        return "Patch is still running. Please wait for completion or click Stop Patch before closing.";
+    }
+
+    public void NotifyCloseBlockedDuringPatch()
+    {
+        if (!IsPatching)
+        {
+            return;
+        }
+
+        SetStatusError(GetCloseBlockedMessage());
+    }
+
+    private static string CreateOutputArchivePath(string outputDestinationPath)
+    {
+        for (var attempt = 0; attempt < 32; attempt++)
+        {
+            var seed = $"{DateTimeOffset.UtcNow:O}|{Guid.NewGuid():N}|{attempt}";
+            var archiveName = PatchOutputPaths.CreateStampedArchiveFileName(seed);
+            var archivePath = Path.Combine(outputDestinationPath, archiveName);
+            if (!File.Exists(archivePath))
+            {
+                return archivePath;
+            }
+        }
+
+        throw new InvalidOperationException("Unable to create a unique output archive name in the selected destination.");
+    }
+
+    private static bool TryCleanupGeneratedOutputRoot(PatchRunManifest manifest, out string cleanupError)
+    {
+        cleanupError = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(manifest.OutputRootPath) || !Directory.Exists(manifest.OutputRootPath))
+        {
+            return true;
+        }
+
+        if (!PatchOutputPaths.IsManagedOutputRoot(manifest.RootPath, manifest.OutputRootPath, manifest.OutputArchivePath))
+        {
+            cleanupError = "Skipped cleanup because the output folder path is unmanaged.";
+            return false;
+        }
+
+        try
+        {
+            Directory.Delete(manifest.OutputRootPath, recursive: true);
+            return true;
+        }
+        catch (Exception exception)
+        {
+            cleanupError = $"Could not remove it automatically ({exception.Message}).";
+            return false;
+        }
     }
 
     private void ResetScanPreview(bool clearScanStarted = true)

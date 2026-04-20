@@ -71,6 +71,39 @@ public sealed class OutputModServiceTests
     }
 
     [Fact]
+    public async Task DeleteAsync_RemovesGeneratedOutputFolderWhenItMatchesArchiveDestination()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-output-tests", Guid.NewGuid().ToString("N"));
+        var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
+        var destinationPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-output-destination", Guid.NewGuid().ToString("N"));
+        var outputPath = Path.Combine(destinationPath, "Glowing Mesh Patcher Output");
+        var archivePath = Path.Combine(destinationPath, "Glowing Mesh Patcher Output.zip");
+        using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+        Directory.CreateDirectory(rootPath);
+        Directory.CreateDirectory(outputPath);
+        await File.WriteAllTextAsync(Path.Combine(outputPath, "sample.nif"), "patched");
+
+        var store = new BackupStore();
+        var manifest = new PatchRunManifest(
+            Guid.NewGuid().ToString("N"),
+            rootPath,
+            outputPath,
+            archivePath,
+            "Glowing Mesh Patcher Output",
+            false,
+            DateTimeOffset.Now,
+            new PatchSettings(0.4f, 0.1f),
+            []);
+
+        await store.WriteManifestAsync(manifest);
+
+        var service = new OutputModService(store);
+        await service.DeleteAsync(manifest.RunId);
+
+        Assert.False(Directory.Exists(outputPath));
+    }
+
+    [Fact]
     public async Task DeleteAsync_ThrowsForUnmanagedOutputFolder()
     {
         var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-output-tests", Guid.NewGuid().ToString("N"));

@@ -30,7 +30,7 @@ public sealed class OutputModService(IBackupStore backupStore) : IOutputModServi
             throw new InvalidOperationException("The selected patch run does not have a generated output folder.");
         }
 
-        if (!PatchOutputPaths.IsManagedOutputRoot(manifest.RootPath, manifest.OutputRootPath))
+        if (!PatchOutputPaths.IsManagedOutputRoot(manifest.RootPath, manifest.OutputRootPath, manifest.OutputArchivePath))
         {
             throw new InvalidOperationException("Refusing to delete an unmanaged output folder.");
         }

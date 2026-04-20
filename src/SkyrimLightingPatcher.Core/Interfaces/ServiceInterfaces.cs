@@ -48,7 +48,8 @@ public interface IPatchExecutor
         ScanReport report,
         string outputArchivePath,
         IProgress<PatchProgressUpdate>? progress = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? outputRootPath = null);
 }
 
 public interface IBackupStore
