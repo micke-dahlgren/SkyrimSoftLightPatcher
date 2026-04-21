@@ -1,0 +1,307 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:SkyrimGlowingMeshPatcher.App.Controls"
+        xmlns:models="using:SkyrimGlowingMeshPatcher.App.Models"
+        xmlns:viewModels="using:SkyrimGlowingMeshPatcher.App.ViewModels"
+        x:Class="SkyrimGlowingMeshPatcher.App.MainWindow"
+        x:DataType="viewModels:MainWindowViewModel"
+        Width="1180"
+        Height="860"
+        MinWidth="980"
+        MinHeight="720"
+        Title="Skyrim Glowing Mesh Patcher"
+        Opened="Window_OnOpened"
+        Closing="Window_OnClosing">
+  <Design.DataContext>
+    <viewModels:MainWindowViewModel />
+  </Design.DataContext>
+
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="20" Spacing="16">
+      <Border Classes="panel" Background="{DynamicResource SurfaceBackgroundDark}">
+        <StackPanel Spacing="8">
+          <TextBlock FontSize="28" FontWeight="Bold" Foreground="{DynamicResource TextHeader}" Text="Glowing Mesh Patcher" />
+          <TextBlock Foreground="{DynamicResource TextBody}" TextWrapping="Wrap"
+                     Text="Generate a patch-mod that removes the effects from meshes that make them glow in shadows." />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="panel" IsEnabled="{Binding IsFolderSectionEnabled}">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="section-title" Text="Folders" />
+
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Mod manager:" />
+              <ComboBox Grid.Column="1"
+                        ItemsSource="{Binding ModManagerOptions}"
+                        SelectedItem="{Binding SelectedModManager, Mode=TwoWay}"
+                        HorizontalAlignment="Left"
+                        MinWidth="220" />
+            </Grid>
+            <Border Height="6" Background="Transparent" />
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Mod staging folder:" />
+              <TextBlock Grid.Column="1"
+                         VerticalAlignment="Center"
+                         Text="{Binding RootPath}"
+                         Foreground="{DynamicResource TextBody}"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding HasRootPath}" />
+              <TextBlock Grid.Column="1"
+                         VerticalAlignment="Center"
+                         Text="Choose a source mesh folder to begin scanning."
+                         Foreground="#A9D7FF"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding HasRootPath, Converter={x:Static BoolConverters.Not}}" />
+            </Grid>
+            <Grid ColumnDefinitions="Auto,Auto,*">
+              <Button Grid.Column="0" Command="{Binding DetectVortexCommand}" Content="Auto locate" />
+              <Button Grid.Column="1" Margin="8,0,0,0" Click="BrowseRootFolder_OnClick" Content="Choose folder" />
+            </Grid>
+          </StackPanel>
+
+          <Border Height="10" Background="Transparent" />
+
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Skyrim Data folder:" />
+              <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{Binding SkyrimDataPath}" Foreground="{DynamicResource TextBody}" TextWrapping="Wrap" />
+            </Grid>
+            <Grid ColumnDefinitions="Auto,Auto,*">
+              <Button Grid.Column="0" Command="{Binding DetectSkyrimDataCommand}" Content="Use Skyrim Data" />
+              <Button Grid.Column="1" Margin="8,0,0,0" Click="BrowseSkyrimDataFolder_OnClick" Content="Choose folder" />
+            </Grid>
+          </StackPanel>
+
+          <Border Height="10" Background="Transparent" />
+
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource TextLabel}" Text="Patch Destination Folder:" />
+              <TextBlock Grid.Column="1"
+                         VerticalAlignment="Center"
+                         Text="{Binding OutputDestinationPath}"
+                         Foreground="{DynamicResource TextBody}"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding HasOutputDestination}" />
+              <TextBlock Grid.Column="1"
+                         VerticalAlignment="Center"
+                         Text="Choose where the generated patch output should be saved."
+                         Foreground="#A9D7FF"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding HasOutputDestination, Converter={x:Static BoolConverters.Not}}" />
+            </Grid>
+            <Grid ColumnDefinitions="Auto,Auto,*">
+              <Button Grid.Column="0" Click="SetOutputDestination_OnClick" Content="Choose folder" />
+              <Button Grid.Column="1" Margin="8,0,0,0" Command="{Binding OpenErrorLogCommand}" Content="Open Error Log"
+                      HorizontalAlignment="Left" VerticalAlignment="Center" IsVisible="{Binding HasScanErrorLog}" />
+            </Grid>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Grid ColumnDefinitions="*,*,*" IsEnabled="{Binding CanEditSettings}" IsVisible="{Binding HasConfiguredRoots}">
+        <Border Grid.Column="0" Classes="panel" Margin="0,0,8,0">
+          <controls:CategoryCard Title="Eye"
+                                 Description="Scan for eye shapes."
+                                 CheckBoxText="Scan for Eyes"
+                                 IsChecked="{Binding EnableEye, Mode=TwoWay}"
+                                 EnabledImage="avares://SkyrimGlowingMeshPatcher.App/Assets/eyes0.jpg"
+                                 DisabledImage="avares://SkyrimGlowingMeshPatcher.App/Assets/eyes1.jpg" />
+        </Border>
+
+        <Border Grid.Column="1" Classes="panel" Margin="4,0,4,0">
+          <controls:CategoryCard Title="Body"
+                                 Description="Scan for body/head/hands/feet skin shapes."
+                                 CheckBoxText="Scan for Body"
+                                 IsChecked="{Binding EnableBody, Mode=TwoWay}"
+                                 EnabledImage="avares://SkyrimGlowingMeshPatcher.App/Assets/skin0.jpg"
+                                 DisabledImage="avares://SkyrimGlowingMeshPatcher.App/Assets/skin1.jpg" />
+        </Border>
+
+        <Border Grid.Column="2" Classes="panel" Margin="8,0,0,0">
+          <controls:CategoryCard Title="Other"
+                                 Description="Scan for other Soft_Lighting shapes (animals, flora, etc)."
+                                 CheckBoxText="Scan for Other"
+                                 IsChecked="{Binding EnableOther, Mode=TwoWay}"
+                                 EnabledImage="avares://SkyrimGlowingMeshPatcher.App/Assets/other0.jpg"
+                                 DisabledImage="avares://SkyrimGlowingMeshPatcher.App/Assets/other1.jpg" />
+        </Border>
+      </Grid>
+
+      <Border Classes="panel" IsEnabled="{Binding HasConfiguredRoots}" IsVisible="{Binding HasConfiguredRoots}">
+        <Grid ColumnDefinitions="Auto,Auto,*" RowDefinitions="Auto">
+          <Button Grid.Column="0" Command="{Binding ScanCommand}" Content="Scan" IsVisible="{Binding IsScanning, Converter={x:Static BoolConverters.Not}}" />
+          <Button Grid.Column="0" Command="{Binding StopScanCommand}" Content="Stop Scan" IsVisible="{Binding IsScanning}" />
+          <Button Grid.Column="1" Margin="8,0,0,0" Command="{Binding ResetScanCommand}" Content="Reset" />
+          <TextBlock Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center" Text="{Binding BusyStateText}" Foreground="{Binding BusyStateColor}" IsVisible="{Binding IsScanning}" />
+        </Grid>
+      </Border>
+
+      <Grid ColumnDefinitions="*,*,*,*,*" IsEnabled="{Binding HasConfiguredRoots}" IsVisible="{Binding ShowScanSections}">
+        <Border Grid.Column="0" Classes="panel" Margin="0,0,6,0">
+          <StackPanel>
+            <TextBlock Foreground="{DynamicResource TextLabel}" Text="Files scanned" />
+            <TextBlock FontSize="26" FontWeight="Bold" Text="{Binding FilesScanned}" />
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="1" Classes="panel" Margin="6,0,6,0">
+          <StackPanel>
+            <TextBlock Foreground="{DynamicResource TextLabel}" Text="Patchable Eye shapes" />
+            <TextBlock FontSize="26" FontWeight="Bold" Text="{Binding PatchableEyeShapes}" />
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="2" Classes="panel" Margin="6,0,6,0">
+          <StackPanel>
+            <TextBlock Foreground="{DynamicResource TextLabel}" Text="Patchable Body shapes" />
+            <TextBlock FontSize="26" FontWeight="Bold" Text="{Binding PatchableBodyShapes}" />
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="3" Classes="panel" Margin="6,0,6,0">
+          <StackPanel>
+            <TextBlock Foreground="{DynamicResource TextLabel}" Text="Patchable Other shapes" />
+            <TextBlock FontSize="26" FontWeight="Bold" Text="{Binding PatchableOtherShapes}" />
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="4" Classes="panel" Margin="6,0,0,0">
+          <StackPanel>
+            <TextBlock Foreground="{DynamicResource TextLabel}" Text="Errors" />
+            <TextBlock FontSize="26" FontWeight="Bold" Text="{Binding ErrorFiles}" />
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <Border Classes="panel" IsEnabled="{Binding HasConfiguredRoots}" IsVisible="{Binding HasScanResults}">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="section-title" Text="Scan results" />
+          <TextBlock Foreground="{DynamicResource TextBody}" TextWrapping="Wrap"
+                     Text="Results are grouped by mod. You can uncheck whole mods or individual files before creating a patch." />
+          <TextBlock Foreground="{DynamicResource TextLabel}" Text="{Binding SelectionSummaryText}" IsVisible="{Binding HasSelectionSummary}" />
+
+          <TextBlock IsVisible="{Binding HasNoResults}" Foreground="{DynamicResource TextLabel}"
+                     Text="{Binding EmptyResultsMessage}" />
+
+          <ItemsControl ItemsSource="{Binding ModGroups}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="models:ModScanGroupViewModel">
+                <Expander Margin="0,0,0,10" IsExpanded="False">
+                  <Expander.Header>
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                      <CheckBox VerticalAlignment="Center" IsChecked="{Binding IsSelected, Mode=TwoWay}" />
+                      <StackPanel Grid.Column="1">
+                        <TextBlock FontWeight="Bold" Text="{Binding ModName}" />
+                        <TextBlock FontSize="11" Foreground="{DynamicResource TextLabel}" Text="{Binding Summary}" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="2" VerticalAlignment="Center" Foreground="{DynamicResource TextLabel}" Text="{Binding StatusText}" />
+                    </Grid>
+                  </Expander.Header>
+
+                  <StackPanel Margin="0,10,0,0" Spacing="8">
+                    <ItemsControl ItemsSource="{Binding Files}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="models:FileScanItemViewModel">
+                          <Expander IsExpanded="{Binding IsExpanded}">
+                            <Expander.Header>
+                              <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                <CheckBox VerticalAlignment="Center" IsChecked="{Binding IsSelected, Mode=TwoWay}" />
+                                <StackPanel Grid.Column="1">
+                                  <TextBlock FontWeight="SemiBold" Text="{Binding DisplayPath}" />
+                                  <TextBlock FontSize="11" Foreground="{DynamicResource TextLabel}" Text="{Binding Summary}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" VerticalAlignment="Center" Foreground="{DynamicResource TextLabel}" Text="{Binding PatchCandidateCountText}" />
+                                <TextBlock Grid.Column="3" VerticalAlignment="Center" Foreground="{DynamicResource TextLabel}" Text="{Binding SelectionStateText}" />
+                              </Grid>
+                            </Expander.Header>
+
+                            <StackPanel Margin="0,10,0,0" Spacing="8">
+                              <ItemsControl ItemsSource="{Binding Shapes}">
+                                <ItemsControl.ItemTemplate>
+                                  <DataTemplate x:DataType="models:ShapeScanItemViewModel">
+                                    <Border Background="{DynamicResource SurfaceBackgroundDark}" CornerRadius="10" Padding="10">
+                                      <Grid ColumnDefinitions="2*,Auto,Auto" RowDefinitions="Auto,Auto,Auto">
+                                        <TextBlock Grid.Column="0" Grid.Row="0" FontWeight="SemiBold" Text="{Binding ShapeName}" />
+                                        <TextBlock Grid.Column="1" Grid.Row="0" Foreground="{DynamicResource TextLabel}" Text="{Binding KindText}" />
+                                        <TextBlock Grid.Column="2" Grid.Row="0" Foreground="{DynamicResource TextBody}" Text="{Binding ValueText}" />
+
+                                        <TextBlock Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="3" Foreground="{DynamicResource TextBody}" Text="{Binding DecisionText}" />
+                                        <TextBlock Grid.Column="0" Grid.Row="2" Grid.ColumnSpan="3" FontSize="11" Foreground="{DynamicResource TextLabel}" TextWrapping="Wrap" Text="{Binding ReasonSummary}" />
+                                      </Grid>
+                                    </Border>
+                                  </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                              </ItemsControl>
+                            </StackPanel>
+                          </Expander>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Expander>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="panel" IsEnabled="{Binding HasConfiguredRoots}" IsVisible="{Binding HasConfiguredRoots}">
+        <Grid ColumnDefinitions="Auto,Auto,*">
+          <Button Grid.Column="0" Command="{Binding PatchCommand}" Content="Patch Selected" IsVisible="{Binding IsPatching, Converter={x:Static BoolConverters.Not}}" />
+          <Button Grid.Column="0" Command="{Binding StopPatchCommand}" Content="Stop Patch" IsVisible="{Binding IsPatching}" />
+          <Button Grid.Column="1" Margin="8,0,0,0" Command="{Binding OpenOutputFolderCommand}" Content="Open Folder"
+                  IsVisible="{Binding HasPatchOutputVisible}" />
+          <StackPanel Grid.Column="2" Margin="12,0,0,0" Spacing="4">
+            <TextBlock VerticalAlignment="Center" Text="{Binding BusyStateText}" Foreground="{Binding BusyStateColor}" IsVisible="{Binding IsPatching}" />
+            <TextBlock VerticalAlignment="Center"
+                       Text="{Binding PatchProgressFileText}"
+                       Foreground="{DynamicResource TextBody}"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding HasPatchProgressFileText}" />
+            <TextBlock VerticalAlignment="Center" Text="{Binding CurrentOutputPath}" IsVisible="{Binding HasPatchOutputVisible}" TextWrapping="Wrap" Foreground="{DynamicResource TextBody}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <Border Classes="panel" IsVisible="{Binding HasStatusAlert}">
+        <StackPanel Spacing="4">
+          <TextBlock Classes="section-title" Text="Status" />
+          <TextBlock Text="{Binding StatusMessage}"
+                     Foreground="{Binding StatusColor}"
+                     TextWrapping="Wrap" />
+          <StackPanel Spacing="2" IsVisible="{Binding HasStatusLinkPath}">
+            <TextBlock Text="{Binding StatusLinkPrefix}"
+                       Foreground="{Binding StatusColor}"
+                       TextWrapping="Wrap" />
+            <Button Classes="status-link"
+                    Command="{Binding OpenStatusLinkCommand}"
+                    ToolTip.Tip="Open file location">
+              <TextBlock Text="{Binding StatusLinkPath}"
+                         TextWrapping="Wrap"
+                         TextDecorations="Underline" />
+            </Button>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="panel" IsVisible="{Binding IsDebugBuild}">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="section-title" Text="Debug Fault Injection" />
+          <TextBlock Foreground="{DynamicResource TextBody}" TextWrapping="Wrap"
+                     Text="DEBUG build only. Select a failure mode to test non-happy-path behavior for Scan/Patch." />
+          <Grid ColumnDefinitions="Auto,*">
+            <TextBlock Grid.Column="0"
+                       VerticalAlignment="Center"
+                       Margin="0,0,8,0"
+                       Foreground="{DynamicResource TextLabel}"
+                       Text="Scenario:" />
+            <ComboBox Grid.Column="1"
+                      ItemsSource="{Binding DebugFaultOptions}"
+                      SelectedItem="{Binding SelectedDebugFaultOption, Mode=TwoWay}"
+                      MinWidth="380"
+                      HorizontalAlignment="Left" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</Window>

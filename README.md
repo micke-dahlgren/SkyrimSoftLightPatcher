@@ -18,13 +18,13 @@ dotnet --version
 ## Project layout
 Common folders you will see:
 
-- `src/SkyrimLightingPatcher.App`  
+- `src/SkyrimGlowingMeshPatcher.App`  
   Avalonia desktop UI application
-- `src/SkyrimLightingPatcher.Core`  
+- `src/SkyrimGlowingMeshPatcher.Core`  
   Core scanning and patching logic
-- `src/SkyrimLightingPatcher.NiflyAdapter`  
+- `src/SkyrimGlowingMeshPatcher.NiflyAdapter`  
   NIF adapter/integration layer
-- `tests/SkyrimLightingPatcher.Tests`  
+- `tests/SkyrimGlowingMeshPatcher.Tests`  
   Unit tests
 - `src/**/bin/Debug` and `src/**/bin/Release`  
   Standard `dotnet build` outputs (developer build outputs)
@@ -42,13 +42,13 @@ Use this for day-to-day development:
 ```powershell
 $env:DOTNET_CLI_HOME="$PWD\.dotnet-cli"
 $env:DOTNET_CLI_TELEMETRY_OPTOUT="1"
-dotnet build .\SkyrimLightingPatcher.sln -c Debug
+dotnet build .\SkyrimGlowingMeshPatcher.sln -c Debug
 ```
 
 Optional: create a Debug publish artifact:
 
 ```powershell
-dotnet publish .\src\SkyrimLightingPatcher.App\SkyrimLightingPatcher.App.csproj -c Debug -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true -o .\publish\debug-win-x64
+dotnet publish .\src\SkyrimGlowingMeshPatcher.App\SkyrimGlowingMeshPatcher.App.csproj -c Debug -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true -o .\publish\debug-win-x64
 ```
 
 ## How to build release
@@ -57,13 +57,13 @@ Use this when preparing a distributable executable:
 ```powershell
 $env:DOTNET_CLI_HOME="$PWD\.dotnet-cli"
 $env:DOTNET_CLI_TELEMETRY_OPTOUT="1"
-dotnet build .\SkyrimLightingPatcher.sln -c Release
-dotnet publish .\src\SkyrimLightingPatcher.App\SkyrimLightingPatcher.App.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true -o .\publish\win-x64
+dotnet build .\SkyrimGlowingMeshPatcher.sln -c Release
+dotnet publish .\src\SkyrimGlowingMeshPatcher.App\SkyrimGlowingMeshPatcher.App.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true -o .\publish\win-x64
 ```
 
 ## Run tests
 ```powershell
 $env:DOTNET_CLI_HOME="$PWD\.dotnet-cli"
 $env:DOTNET_CLI_TELEMETRY_OPTOUT="1"
-dotnet test .\tests\SkyrimLightingPatcher.Tests\SkyrimLightingPatcher.Tests.csproj -c Debug
+dotnet test .\tests\SkyrimGlowingMeshPatcher.Tests\SkyrimGlowingMeshPatcher.Tests.csproj -c Debug
 ```
