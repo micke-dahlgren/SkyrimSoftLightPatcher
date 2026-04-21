@@ -125,6 +125,234 @@ public sealed class PatchExecutorTests
         Assert.False(File.Exists(archivePath));
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenLowSpaceBeforePreparingOutput_ThrowsLowDiskSpaceException()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-patch-tests", Guid.NewGuid().ToString("N"));
+        var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
+        using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+        Directory.CreateDirectory(rootPath);
+
+        var sourceFile = Path.Combine(rootPath, "meshes", "sample.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceFile)!);
+        await File.WriteAllTextAsync(sourceFile, "sample");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, new PatchSettings(0.4f, 0.2f)),
+            [
+                new FileScanResult(
+                    sourceFile,
+                    [CreateShapeResult(sourceFile, "Eye", ShapeKind.Eye, 0.1f, 0.4f)]),
+            ]);
+
+        var monitor = new FakeDiskSpaceMonitor();
+        monitor.AvailableByStage[PatchExecutionStages.PreparingOutput] = 0;
+
+        var patchExecutor = new PatchExecutor(
+            new PatchPlanner(),
+            new FakePatchMeshService(),
+            new ScanFileResolver(),
+            new BackupStore(),
+            monitor);
+        var archivePath = Path.Combine(rootPath, "output.zip");
+
+        var error = await Assert.ThrowsAsync<LowDiskSpaceException>(() => patchExecutor.ExecuteAsync(report, archivePath));
+
+        Assert.Equal(PatchExecutionStages.PreparingOutput, error.StageName);
+        Assert.Contains("Quick cleanup command", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(error.RequiredBytes > error.AvailableBytes);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenLowSpaceBeforeWritingPatchedFiles_ThrowsLowDiskSpaceException()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-patch-tests", Guid.NewGuid().ToString("N"));
+        var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
+        using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+        Directory.CreateDirectory(rootPath);
+
+        var sourceFile = Path.Combine(rootPath, "meshes", "sample.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceFile)!);
+        await File.WriteAllTextAsync(sourceFile, "sample");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, new PatchSettings(0.4f, 0.2f)),
+            [
+                new FileScanResult(
+                    sourceFile,
+                    [CreateShapeResult(sourceFile, "Eye", ShapeKind.Eye, 0.1f, 0.4f)]),
+            ]);
+
+        var monitor = new FakeDiskSpaceMonitor();
+        monitor.AvailableByStage[PatchExecutionStages.WritingPatchedFiles] = 0;
+
+        var patchExecutor = new PatchExecutor(
+            new PatchPlanner(),
+            new FakePatchMeshService(),
+            new ScanFileResolver(),
+            new BackupStore(),
+            monitor);
+        var archivePath = Path.Combine(rootPath, "output.zip");
+
+        var error = await Assert.ThrowsAsync<LowDiskSpaceException>(() => patchExecutor.ExecuteAsync(report, archivePath));
+
+        Assert.Equal(PatchExecutionStages.WritingPatchedFiles, error.StageName);
+        Assert.False(File.Exists(archivePath));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenLowSpaceBeforeWritingOutputManifest_ThrowsLowDiskSpaceException()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-patch-tests", Guid.NewGuid().ToString("N"));
+        var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
+        using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+        Directory.CreateDirectory(rootPath);
+
+        var sourceFile = Path.Combine(rootPath, "meshes", "sample.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceFile)!);
+        await File.WriteAllTextAsync(sourceFile, "sample");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, new PatchSettings(0.4f, 0.2f)),
+            [
+                new FileScanResult(
+                    sourceFile,
+                    [CreateShapeResult(sourceFile, "Eye", ShapeKind.Eye, 0.1f, 0.4f)]),
+            ]);
+
+        var monitor = new FakeDiskSpaceMonitor();
+        monitor.AvailableByStage[PatchExecutionStages.WritingOutputManifest] = 0;
+
+        var patchExecutor = new PatchExecutor(
+            new PatchPlanner(),
+            new FakePatchMeshService(),
+            new ScanFileResolver(),
+            new BackupStore(),
+            monitor);
+        var archivePath = Path.Combine(rootPath, "output.zip");
+
+        var error = await Assert.ThrowsAsync<LowDiskSpaceException>(() => patchExecutor.ExecuteAsync(report, archivePath));
+
+        Assert.Equal(PatchExecutionStages.WritingOutputManifest, error.StageName);
+        Assert.False(File.Exists(archivePath));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenLowSpaceBeforeCreatingArchive_ThrowsLowDiskSpaceExceptionAndKeepsLooseOutput()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-patch-tests", Guid.NewGuid().ToString("N"));
+        var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
+        using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+        Directory.CreateDirectory(rootPath);
+
+        var sourceFile = Path.Combine(rootPath, "meshes", "sample.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceFile)!);
+        await File.WriteAllTextAsync(sourceFile, "sample");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, new PatchSettings(0.4f, 0.2f)),
+            [
+                new FileScanResult(
+                    sourceFile,
+                    [CreateShapeResult(sourceFile, "Eye", ShapeKind.Eye, 0.1f, 0.4f)]),
+            ]);
+
+        var monitor = new FakeDiskSpaceMonitor();
+        monitor.AvailableByStage[PatchExecutionStages.CreatingArchive] = 0;
+
+        var destinationPath = Path.Combine(rootPath, "custom-output-destination");
+        var outputRootPath = Path.Combine(destinationPath, "Glowing Mesh Patcher Output");
+        var archivePath = Path.Combine(destinationPath, "Glowing Mesh Patcher Output.zip");
+
+        var patchExecutor = new PatchExecutor(
+            new PatchPlanner(),
+            new FakePatchMeshService(),
+            new ScanFileResolver(),
+            new BackupStore(),
+            monitor);
+        var error = await Assert.ThrowsAsync<LowDiskSpaceException>(() =>
+            patchExecutor.ExecuteAsync(report, archivePath, outputRootPath: outputRootPath));
+
+        Assert.Equal(PatchExecutionStages.CreatingArchive, error.StageName);
+        Assert.True(Directory.Exists(outputRootPath));
+        Assert.NotEmpty(Directory.EnumerateFiles(outputRootPath, "*.nif", SearchOption.AllDirectories));
+        Assert.False(File.Exists(archivePath));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenLowSpaceBeforeWritingRunManifest_ThrowsLowDiskSpaceExceptionAfterArchiveIsCreated()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-patch-tests", Guid.NewGuid().ToString("N"));
+        var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
+        using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+        Directory.CreateDirectory(rootPath);
+
+        var sourceFile = Path.Combine(rootPath, "meshes", "sample.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceFile)!);
+        await File.WriteAllTextAsync(sourceFile, "sample");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, new PatchSettings(0.4f, 0.2f)),
+            [
+                new FileScanResult(
+                    sourceFile,
+                    [CreateShapeResult(sourceFile, "Eye", ShapeKind.Eye, 0.1f, 0.4f)]),
+            ]);
+
+        var monitor = new FakeDiskSpaceMonitor();
+        monitor.AvailableByStage[PatchExecutionStages.WritingRunManifest] = 0;
+
+        var archivePath = Path.Combine(rootPath, "output.zip");
+        var patchExecutor = new PatchExecutor(
+            new PatchPlanner(),
+            new FakePatchMeshService(),
+            new ScanFileResolver(),
+            new BackupStore(),
+            monitor);
+        var error = await Assert.ThrowsAsync<LowDiskSpaceException>(() => patchExecutor.ExecuteAsync(report, archivePath));
+
+        Assert.Equal(PatchExecutionStages.WritingRunManifest, error.StageName);
+        Assert.True(File.Exists(archivePath));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ReservesMinimumWorkingSpace()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-patch-tests", Guid.NewGuid().ToString("N"));
+        var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
+        using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+        Directory.CreateDirectory(rootPath);
+
+        var sourceFile = Path.Combine(rootPath, "meshes", "sample.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceFile)!);
+        await File.WriteAllTextAsync(sourceFile, "sample");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, new PatchSettings(0.4f, 0.2f)),
+            [
+                new FileScanResult(
+                    sourceFile,
+                    [CreateShapeResult(sourceFile, "Eye", ShapeKind.Eye, 0.1f, 0.4f)]),
+            ]);
+
+        var monitor = new FakeDiskSpaceMonitor();
+        var patchExecutor = new PatchExecutor(
+            new PatchPlanner(),
+            new FakePatchMeshService(),
+            new ScanFileResolver(),
+            new BackupStore(),
+            monitor);
+        var archivePath = Path.Combine(rootPath, "output.zip");
+
+        _ = await patchExecutor.ExecuteAsync(report, archivePath);
+
+        Assert.Contains(
+            monitor.Reservations,
+            reservation =>
+                reservation.Stage == PatchExecutionStages.PreparingOutput &&
+                reservation.Bytes == 256L * 1024 * 1024);
+    }
+
     private static ShapeScanResult CreateShapeResult(
         string filePath,
         string shapeName,
@@ -171,6 +399,37 @@ public sealed class PatchExecutorTests
         public void Report(T value)
         {
             updates.Add(value);
+        }
+    }
+
+    private sealed class FakeDiskSpaceMonitor : IDiskSpaceMonitor
+    {
+        public long DefaultAvailableBytes { get; set; } = long.MaxValue;
+
+        public Dictionary<string, long> AvailableByStage { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public List<ReservationRecord> Reservations { get; } = [];
+
+        public long GetAvailableBytes(string stageName, string targetPath)
+        {
+            return AvailableByStage.TryGetValue(stageName, out var availableBytes)
+                ? availableBytes
+                : DefaultAvailableBytes;
+        }
+
+        public IDisposable ReserveSpace(string stageName, string targetPath, string reservationName, long bytes)
+        {
+            Reservations.Add(new ReservationRecord(stageName, targetPath, reservationName, bytes));
+            return new NoOpReservation();
+        }
+    }
+
+    private sealed record ReservationRecord(string Stage, string TargetPath, string ReservationName, long Bytes);
+
+    private sealed class NoOpReservation : IDisposable
+    {
+        public void Dispose()
+        {
         }
     }
 }

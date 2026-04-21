@@ -7,13 +7,14 @@ namespace SkyrimLightingPatcher.Core.Services;
 
 public sealed class BackupStore : IBackupStore
 {
-    private const string ManifestFileName = "manifest.json";
     private readonly JsonSerializerOptions serializerOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
     };
 
-    private readonly string backupsRoot = Path.Combine(PatchOutputPaths.GetApplicationHomeDirectory(), "Backups");
+    private readonly string backupsRoot = Path.Combine(
+        PatchOutputPaths.GetApplicationHomeDirectory(),
+        PatchOutputPaths.BackupsFolderName);
 
     public async Task<string> BackupFileAsync(string runId, string rootPath, string filePath, CancellationToken cancellationToken = default)
     {
@@ -64,7 +65,7 @@ public sealed class BackupStore : IBackupStore
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var manifestPath = Path.Combine(runDirectory, ManifestFileName);
+            var manifestPath = Path.Combine(runDirectory, PatchOutputPaths.BackupManifestFileName);
             if (!File.Exists(manifestPath))
             {
                 continue;
@@ -108,6 +109,6 @@ public sealed class BackupStore : IBackupStore
 
     private string GetManifestPath(string runId)
     {
-        return Path.Combine(backupsRoot, runId, ManifestFileName);
+        return PatchOutputPaths.GetBackupManifestPath(runId);
     }
 }

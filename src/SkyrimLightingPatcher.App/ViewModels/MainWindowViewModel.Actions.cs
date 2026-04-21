@@ -149,6 +149,11 @@ public partial class MainWindowViewModel
                     patchCancellationTokenSource.Token,
                     outputRootPath);
             }
+            catch (LowDiskSpaceException lowDiskException)
+            {
+                HandleLowDiskSpaceFailure(lowDiskException, outputRootPath);
+                return;
+            }
             catch (PatchArchiveCreationException archiveException)
             {
                 HandleArchiveCreationFailure(archiveException);
@@ -427,6 +432,21 @@ public partial class MainWindowViewModel
         var archiveError = archiveException.InnerException?.Message ?? archiveException.Message;
         StatusMessage =
             $"Patched files were created, but creating the archive failed: {archiveError}. Loose files are in {archiveException.OutputRootPath}. Create a .zip or .7z from that folder before installing it as a mod.";
+        StatusColor = "#FFB3B3";
+        patchRunDirty = true;
+        RefreshCommandState();
+    }
+
+    private void HandleLowDiskSpaceFailure(LowDiskSpaceException lowDiskException, string outputRootPath)
+    {
+        if (!string.IsNullOrWhiteSpace(outputRootPath) && Directory.Exists(outputRootPath))
+        {
+            CurrentOutputPath = outputRootPath;
+            hasPatchedInSession = true;
+            OnPropertyChanged(nameof(HasPatchOutputVisible));
+        }
+
+        StatusMessage = lowDiskException.Message;
         StatusColor = "#FFB3B3";
         patchRunDirty = true;
         RefreshCommandState();

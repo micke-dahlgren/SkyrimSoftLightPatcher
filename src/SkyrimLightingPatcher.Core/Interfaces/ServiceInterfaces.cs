@@ -63,6 +63,13 @@ public interface IBackupStore
     Task<IReadOnlyList<BackupRunInfo>> ListRunsAsync(string rootPath, CancellationToken cancellationToken = default);
 }
 
+public interface IDiskSpaceMonitor
+{
+    long GetAvailableBytes(string stageName, string targetPath);
+
+    IDisposable ReserveSpace(string stageName, string targetPath, string reservationName, long bytes);
+}
+
 public interface IRestoreService
 {
     Task<IReadOnlyList<BackupRunInfo>> ListRunsAsync(string rootPath, CancellationToken cancellationToken = default);

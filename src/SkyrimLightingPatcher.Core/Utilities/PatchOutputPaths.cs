@@ -9,6 +9,8 @@ public static class PatchOutputPaths
     public const string OutputManifestFileName = "softlight-patch-manifest.json";
     public const string OutputArchivePrefix = "GlowingMeshPatch";
     public const int OutputArchiveHashLength = 6;
+    public const string BackupsFolderName = "Backups";
+    public const string BackupManifestFileName = "manifest.json";
     private const string GeneratedModsFolderName = "GeneratedMods";
     private const string VortexMarkerFileName = "__vortex_staging_folder";
 
@@ -28,6 +30,11 @@ public static class PatchOutputPaths
     public static string GetManifestCopyPath(string outputRootPath)
     {
         return Path.Combine(outputRootPath, OutputManifestFileName);
+    }
+
+    public static string GetBackupManifestPath(string runId)
+    {
+        return Path.Combine(GetApplicationHomeDirectory(), BackupsFolderName, runId, BackupManifestFileName);
     }
 
     public static string CreateStampedArchiveFileName(string seed)
