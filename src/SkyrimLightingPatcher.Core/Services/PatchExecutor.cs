@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using SkyrimLightingPatcher.Core.Interfaces;
 using SkyrimLightingPatcher.Core.Models;
@@ -23,6 +24,7 @@ public sealed class PatchExecutor(
     private const long MinimumArchiveEstimateBytes = 16L * 1024 * 1024;
     private const long ArchiveOverheadBytes = 8L * 1024 * 1024;
     private const long ArchiveExtractionPerFileEstimateBytes = 512L * 1024;
+    private const long ErrorLogWriteEstimateBytes = 512L * 1024;
 
     private readonly JsonSerializerOptions serializerOptions = new(JsonSerializerDefaults.Web)
     {
@@ -158,6 +160,18 @@ public sealed class PatchExecutor(
             report.Request.Settings,
             fileRecords);
 
+        var patchErrorLogContent = BuildPatchErrorLogContent(manifest);
+        if (patchErrorLogContent is not null)
+        {
+            var errorLogPath = PatchOutputPaths.GetPatchErrorLogPath(manifest.OutputRootPath);
+            EnsureStageCapacity(
+                reservationScope,
+                PatchExecutionStages.WritingOutputManifest,
+                errorLogPath,
+                ErrorLogWriteEstimateBytes);
+            await WriteTextFileAsync(errorLogPath, patchErrorLogContent, cancellationToken).ConfigureAwait(false);
+        }
+
         ReportProgress(progress, ProgressMessageFinalizingManifest, filesProcessed, plan.FileCount, successfulFiles, failedFiles);
         var outputManifestPath = PatchOutputPaths.GetManifestCopyPath(manifest.OutputRootPath);
         EnsureStageCapacity(
@@ -179,6 +193,10 @@ public sealed class PatchExecutor(
             PatchExecutionStages.CreatingArchive,
             Path.GetDirectoryName(outputArchivePath) ?? outputArchivePath);
         CreateArchive(resolvedOutputRootPath, outputArchivePath, archiveEstimateBytes);
+        if (patchErrorLogContent is not null)
+        {
+            await TryWriteArchiveErrorLogAsync(outputArchivePath, patchErrorLogContent, cancellationToken).ConfigureAwait(false);
+        }
 
         ReportProgress(progress, ProgressMessageWritingRunManifest, filesProcessed, plan.FileCount, successfulFiles, failedFiles);
         var backupManifestPath = PatchOutputPaths.GetBackupManifestPath(runId);
@@ -250,6 +268,66 @@ public sealed class PatchExecutor(
 
         await using var stream = File.Open(manifestPath, FileMode.Create, FileAccess.Write, FileShare.None);
         await JsonSerializer.SerializeAsync(stream, manifest, serializerOptions, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string? BuildPatchErrorLogContent(PatchRunManifest manifest)
+    {
+        var failedFiles = manifest.Files
+            .Where(static file => string.Equals(file.Status, "Failed", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (failedFiles.Length == 0)
+        {
+            return null;
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine("Skyrim Glowing Mesh Patcher - error log");
+        builder.AppendLine($"Run ID: {manifest.RunId}");
+        builder.AppendLine($"Created: {manifest.Timestamp:O}");
+        builder.AppendLine($"Failed files: {failedFiles.Length}");
+        builder.AppendLine();
+
+        for (var index = 0; index < failedFiles.Length; index++)
+        {
+            var failedFile = failedFiles[index];
+            builder.AppendLine($"{index + 1}. Source: {failedFile.FilePath}");
+            builder.AppendLine($"   Output: {failedFile.OutputPath}");
+            if (!string.IsNullOrWhiteSpace(failedFile.SourceModName))
+            {
+                builder.AppendLine($"   Mod: {failedFile.SourceModName}");
+            }
+
+            var errorMessage = string.IsNullOrWhiteSpace(failedFile.ErrorMessage)
+                ? "Unknown error."
+                : failedFile.ErrorMessage.Trim();
+            builder.AppendLine($"   Error: {errorMessage}");
+            builder.AppendLine();
+        }
+
+        return builder.ToString();
+    }
+
+    private static async Task WriteTextFileAsync(string outputPath, string content, CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+        await File.WriteAllTextAsync(outputPath, content, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task TryWriteArchiveErrorLogAsync(
+        string outputArchivePath,
+        string patchErrorLogContent,
+        CancellationToken cancellationToken)
+    {
+        var errorLogPath = PatchOutputPaths.GetArchiveErrorLogPath(outputArchivePath);
+
+        try
+        {
+            await WriteTextFileAsync(errorLogPath, patchErrorLogContent, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Best effort companion file: primary copy is still included in output mod/zip.
+        }
     }
 
     private void CreateArchive(string outputRootPath, string outputArchivePath, long archiveEstimateBytes)

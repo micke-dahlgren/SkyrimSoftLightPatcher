@@ -1,6 +1,7 @@
 using System.Text.Json;
 using SkyrimLightingPatcher.Core.Interfaces;
 using SkyrimLightingPatcher.Core.Models;
+using SkyrimLightingPatcher.Core.Utilities;
 
 namespace SkyrimLightingPatcher.Core.Services;
 
@@ -11,7 +12,7 @@ public sealed class JsonSettingsStore : ISettingsStore
         WriteIndented = true,
     };
 
-    private readonly string settingsPath = Path.Combine(GetApplicationHomeDirectory(), "settings.json");
+    private readonly string settingsPath = Path.Combine(PatchOutputPaths.GetApplicationHomeDirectory(), "settings.json");
 
     public async Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default)
     {
@@ -32,11 +33,4 @@ public sealed class JsonSettingsStore : ISettingsStore
         await JsonSerializer.SerializeAsync(stream, settings, serializerOptions, cancellationToken).ConfigureAwait(false);
     }
 
-    private static string GetApplicationHomeDirectory()
-    {
-        return Environment.GetEnvironmentVariable("SKYRIM_LIGHTING_PATCHER_HOME")
-               ?? Path.Combine(
-                   Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                   "SkyrimLightingPatcher");
-    }
 }

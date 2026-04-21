@@ -1,6 +1,8 @@
 using SkyrimLightingPatcher.App.ViewModels;
+using SkyrimLightingPatcher.App.Models;
 using SkyrimLightingPatcher.Core.Interfaces;
 using SkyrimLightingPatcher.Core.Models;
+using SkyrimLightingPatcher.Core.Utilities;
 
 namespace SkyrimLightingPatcher.Tests;
 
@@ -117,7 +119,7 @@ public sealed class MainWindowViewModelSettingsTests
         Assert.True(Directory.Exists(expectedOutputRoot));
         Assert.Equal(expectedOutputRoot, viewModel.CurrentOutputPath);
         Assert.True(viewModel.HasPatchOutputVisible);
-        Assert.Contains("Create a .zip or .7z", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("zip that folder manually", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(expectedOutputRoot, viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.NotNull(failingPatchExecutor.LastOutputArchivePath);
         Assert.Equal(outputDestination, Path.GetDirectoryName(failingPatchExecutor.LastOutputArchivePath)!);
@@ -133,7 +135,223 @@ public sealed class MainWindowViewModelSettingsTests
 
         viewModel.NotifyCloseBlockedDuringPatch();
 
-        Assert.Contains("creating the mod archive", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("creating your zip file", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PatchCommand_ReappliesSelectedDebugScenarioAtPatchStart()
+    {
+        var rootPath = CreateTempDirectory();
+        var outputDestination = CreateTempDirectory();
+        var sourceFile = Path.Combine(rootPath, "meshes", "sample.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceFile)!);
+        await File.WriteAllTextAsync(sourceFile, "sample");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, new PatchSettings(0.4f, 0.2f)),
+            [
+                new FileScanResult(
+                    sourceFile,
+                    [
+                        new ShapeScanResult(
+                            new NifShapeProbe(
+                                sourceFile,
+                                "sample:Eye",
+                                "Eye",
+                                ShaderMetadata.Empty,
+                                Array.Empty<string>(),
+                                true,
+                                0.1f),
+                            ShapeKind.Eye,
+                            true,
+                            0.4f,
+                            "Eye",
+                            ["Eligible"]),
+                    ]),
+            ]);
+
+        var debugFaultState = new DebugFaultState();
+        var patchExecutor = new CapturingPatchExecutor(debugFaultState);
+        var viewModel = new MainWindowViewModel(
+            new RecordingSettingsStore(new AppSettings(null, PatchSettings.Default)),
+            new FixedScanService(report),
+            patchExecutor,
+            new NoOpOutputModService(),
+            new NoOpVortexPathResolver(),
+            new NoOpModOrganizer2PathResolver(),
+            debugFaultState);
+
+        await viewModel.InitializeAsync();
+        viewModel.EnableEye = true;
+        await viewModel.SetRootPathAsync(rootPath);
+        await viewModel.SetOutputDestinationPathAsync(outputDestination);
+        await viewModel.ScanCommand.ExecuteAsync(null);
+
+        var selectedScenario = viewModel.DebugFaultOptions.First(option =>
+            option.Mode == DebugPatchFailureMode.PatchLowDiskWritingRunManifest);
+        viewModel.SelectedDebugFaultOption = selectedScenario;
+
+        // Simulate state drift to verify PatchAsync re-applies selection before execution.
+        debugFaultState.PatchFailureMode = DebugPatchFailureMode.None;
+        debugFaultState.ScanFailureMode = DebugPatchFailureMode.None;
+
+        await viewModel.PatchCommand.ExecuteAsync(null);
+
+        Assert.Equal(DebugPatchFailureMode.PatchLowDiskWritingRunManifest, patchExecutor.ObservedPatchModeAtExecution);
+    }
+
+    [Fact]
+    public async Task ScanCommand_WhenReportHasErrorsWithoutLogPath_ShowsExplicitErrorCountInStatusMessage()
+    {
+        var rootPath = CreateTempDirectory();
+        var outputDestination = CreateTempDirectory();
+        var sourceFile = Path.Combine(rootPath, "meshes", "sample.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceFile)!);
+        await File.WriteAllTextAsync(sourceFile, "sample");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, PatchSettings.Default),
+            [
+                new FileScanResult(
+                    sourceFile,
+                    [],
+                    "Simulated scan read failure"),
+            ]);
+
+        var viewModel = new MainWindowViewModel(
+            new RecordingSettingsStore(new AppSettings(null, PatchSettings.Default)),
+            new FixedScanService(report),
+            new NoOpPatchExecutor(),
+            new NoOpOutputModService(),
+            new NoOpVortexPathResolver(),
+            new NoOpModOrganizer2PathResolver());
+
+        await viewModel.InitializeAsync();
+        viewModel.EnableEye = true;
+        await viewModel.SetRootPathAsync(rootPath);
+        await viewModel.SetOutputDestinationPathAsync(outputDestination);
+
+        await viewModel.ScanCommand.ExecuteAsync(null);
+
+        Assert.Contains("Could not read 1 file(s).", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("#FFB3B3", viewModel.StatusColor);
+    }
+
+    [Fact]
+    public async Task PatchCommand_WhenLowDiskFailureOccurs_IgnoresLateProgressUpdates()
+    {
+        var rootPath = CreateTempDirectory();
+        var outputDestination = CreateTempDirectory();
+        var sourceFile = Path.Combine(rootPath, "meshes", "sample.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceFile)!);
+        await File.WriteAllTextAsync(sourceFile, "sample");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, new PatchSettings(0.4f, 0.2f)),
+            [
+                new FileScanResult(
+                    sourceFile,
+                    [
+                        new ShapeScanResult(
+                            new NifShapeProbe(
+                                sourceFile,
+                                "sample:Eye",
+                                "Eye",
+                                ShaderMetadata.Empty,
+                                Array.Empty<string>(),
+                                true,
+                                0.1f),
+                            ShapeKind.Eye,
+                            true,
+                            0.4f,
+                            "Eye",
+                            ["Eligible"]),
+                    ]),
+            ]);
+
+        var viewModel = new MainWindowViewModel(
+            new RecordingSettingsStore(new AppSettings(null, PatchSettings.Default)),
+            new FixedScanService(report),
+            new StaleProgressAfterFailurePatchExecutor(),
+            new NoOpOutputModService(),
+            new NoOpVortexPathResolver(),
+            new NoOpModOrganizer2PathResolver());
+
+        await viewModel.InitializeAsync();
+        viewModel.EnableEye = true;
+        await viewModel.SetRootPathAsync(rootPath);
+        await viewModel.SetOutputDestinationPathAsync(outputDestination);
+
+        await viewModel.ScanCommand.ExecuteAsync(null);
+        await viewModel.PatchCommand.ExecuteAsync(null);
+        await Task.Delay(250);
+
+        Assert.Contains("Not enough disk space while writing patched files.", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Patching meshes...", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("#FFB3B3", viewModel.StatusColor);
+    }
+
+    [Fact]
+    public async Task PatchCommand_WhenUnexpectedFailureOccurs_WritesTechnicalErrorLogForBugReports()
+    {
+        var rootPath = CreateTempDirectory();
+        var outputDestination = CreateTempDirectory();
+        var appHome = CreateTempDirectory();
+        using var appHomeScope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+        var sourceFile = Path.Combine(rootPath, "meshes", "sample.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourceFile)!);
+        await File.WriteAllTextAsync(sourceFile, "sample");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, new PatchSettings(0.4f, 0.2f)),
+            [
+                new FileScanResult(
+                    sourceFile,
+                    [
+                        new ShapeScanResult(
+                            new NifShapeProbe(
+                                sourceFile,
+                                "sample:Eye",
+                                "Eye",
+                                ShaderMetadata.Empty,
+                                Array.Empty<string>(),
+                                true,
+                                0.1f),
+                            ShapeKind.Eye,
+                            true,
+                            0.4f,
+                            "Eye",
+                            ["Eligible"]),
+                    ]),
+            ]);
+
+        var viewModel = new MainWindowViewModel(
+            new RecordingSettingsStore(new AppSettings(null, PatchSettings.Default)),
+            new FixedScanService(report),
+            new UnexpectedFailurePatchExecutor(),
+            new NoOpOutputModService(),
+            new NoOpVortexPathResolver(),
+            new NoOpModOrganizer2PathResolver());
+
+        await viewModel.InitializeAsync();
+        viewModel.EnableEye = true;
+        await viewModel.SetRootPathAsync(rootPath);
+        await viewModel.SetOutputDestinationPathAsync(outputDestination);
+
+        await viewModel.ScanCommand.ExecuteAsync(null);
+        await viewModel.PatchCommand.ExecuteAsync(null);
+
+        var errorLogPath = Path.Combine(appHome, PatchOutputPaths.PatchErrorLogFileName);
+
+        Assert.Contains("Something went wrong. Please try again.", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("We saved the error output to", viewModel.StatusLinkPrefix);
+        Assert.Equal(errorLogPath, viewModel.StatusLinkPath);
+        Assert.True(viewModel.HasStatusLinkPath);
+
+        Assert.True(File.Exists(errorLogPath));
+        var errorLogContent = await File.ReadAllTextAsync(errorLogPath);
+        Assert.Contains("InvalidOperationException", errorLogContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Simulated unexpected patch failure for test.", errorLogContent, StringComparison.OrdinalIgnoreCase);
     }
 
     private static MainWindowViewModel CreateViewModel(ISettingsStore settingsStore)
@@ -267,6 +485,71 @@ public sealed class MainWindowViewModelSettingsTests
             string? outputRootPath = null)
         {
             throw new NotSupportedException();
+        }
+    }
+
+    private sealed class CapturingPatchExecutor(DebugFaultState debugFaultState) : IPatchExecutor
+    {
+        public DebugPatchFailureMode ObservedPatchModeAtExecution { get; private set; } = DebugPatchFailureMode.None;
+
+        public Task<PatchRunManifest> ExecuteAsync(
+            ScanReport report,
+            string outputArchivePath,
+            IProgress<PatchProgressUpdate>? progress = null,
+            CancellationToken cancellationToken = default,
+            string? outputRootPath = null)
+        {
+            ObservedPatchModeAtExecution = debugFaultState.PatchFailureMode;
+            var resolvedOutputRootPath = outputRootPath ?? Path.Combine(Path.GetTempPath(), "capturing-patch-output");
+            Directory.CreateDirectory(resolvedOutputRootPath);
+            File.WriteAllText(outputArchivePath, "zip");
+            return Task.FromResult(new PatchRunManifest(
+                Guid.NewGuid().ToString("N"),
+                report.Request.RootPath,
+                resolvedOutputRootPath,
+                outputArchivePath,
+                "Glowing Mesh Patcher Output",
+                false,
+                DateTimeOffset.Now,
+                report.Request.Settings,
+                []));
+        }
+    }
+
+    private sealed class StaleProgressAfterFailurePatchExecutor : IPatchExecutor
+    {
+        public Task<PatchRunManifest> ExecuteAsync(
+            ScanReport report,
+            string outputArchivePath,
+            IProgress<PatchProgressUpdate>? progress = null,
+            CancellationToken cancellationToken = default,
+            string? outputRootPath = null)
+        {
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(75);
+                progress?.Report(new PatchProgressUpdate("C:\\stale\\bearstatic.nif", 0, 813, 0, 0));
+            });
+
+            throw new LowDiskSpaceException(
+                PatchExecutionStages.WritingPatchedFiles,
+                outputArchivePath,
+                256L * 1024 * 1024,
+                0,
+                "Test low disk");
+        }
+    }
+
+    private sealed class UnexpectedFailurePatchExecutor : IPatchExecutor
+    {
+        public Task<PatchRunManifest> ExecuteAsync(
+            ScanReport report,
+            string outputArchivePath,
+            IProgress<PatchProgressUpdate>? progress = null,
+            CancellationToken cancellationToken = default,
+            string? outputRootPath = null)
+        {
+            throw new InvalidOperationException("Simulated unexpected patch failure for test.");
         }
     }
 

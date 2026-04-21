@@ -5,21 +5,54 @@ namespace SkyrimLightingPatcher.Core.Utilities;
 
 public static class PatchOutputPaths
 {
+    public const string ApplicationFolderName = "SkyrimGlowingMeshPatcher";
     public const string OutputModName = "Glowing Mesh Patcher Output";
     public const string OutputManifestFileName = "softlight-patch-manifest.json";
+    public const string PatchErrorLogFileName = "error.log.txt";
     public const string OutputArchivePrefix = "GlowingMeshPatch";
     public const int OutputArchiveHashLength = 6;
     public const string BackupsFolderName = "Backups";
     public const string BackupManifestFileName = "manifest.json";
     private const string GeneratedModsFolderName = "GeneratedMods";
     private const string VortexMarkerFileName = "__vortex_staging_folder";
+    private const string LegacyApplicationFolderName = "SkyrimLightingPatcher";
 
     public static string GetApplicationHomeDirectory()
     {
-        return Environment.GetEnvironmentVariable("SKYRIM_LIGHTING_PATCHER_HOME")
-               ?? Path.Combine(
-                   Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                   "SkyrimLightingPatcher");
+        var overridePath = Environment.GetEnvironmentVariable("SKYRIM_LIGHTING_PATCHER_HOME");
+        if (!string.IsNullOrWhiteSpace(overridePath))
+        {
+            return overridePath;
+        }
+
+        var localAppDataPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return ResolveDefaultApplicationHomeDirectory(localAppDataPath);
+    }
+
+    private static string ResolveDefaultApplicationHomeDirectory(string localAppDataPath)
+    {
+        var appHomePath = Path.Combine(localAppDataPath, ApplicationFolderName);
+        if (Directory.Exists(appHomePath))
+        {
+            return appHomePath;
+        }
+
+        var legacyAppHomePath = Path.Combine(localAppDataPath, LegacyApplicationFolderName);
+        if (!Directory.Exists(legacyAppHomePath))
+        {
+            return appHomePath;
+        }
+
+        try
+        {
+            Directory.Move(legacyAppHomePath, appHomePath);
+            return appHomePath;
+        }
+        catch
+        {
+            // Fallback keeps compatibility when migration is blocked by locks/permissions.
+            return legacyAppHomePath;
+        }
     }
 
     public static string GetOutputRootPath(string rootPath)
@@ -30,6 +63,18 @@ public static class PatchOutputPaths
     public static string GetManifestCopyPath(string outputRootPath)
     {
         return Path.Combine(outputRootPath, OutputManifestFileName);
+    }
+
+    public static string GetPatchErrorLogPath(string outputRootPath)
+    {
+        return Path.Combine(outputRootPath, PatchErrorLogFileName);
+    }
+
+    public static string GetArchiveErrorLogPath(string outputArchivePath)
+    {
+        var archiveDirectory = Path.GetDirectoryName(Path.GetFullPath(outputArchivePath))
+                               ?? GetApplicationHomeDirectory();
+        return Path.Combine(archiveDirectory, PatchErrorLogFileName);
     }
 
     public static string GetBackupManifestPath(string runId)

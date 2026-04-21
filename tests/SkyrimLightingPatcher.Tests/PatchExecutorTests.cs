@@ -1,6 +1,8 @@
+using System.IO.Compression;
 using SkyrimLightingPatcher.Core.Interfaces;
 using SkyrimLightingPatcher.Core.Models;
 using SkyrimLightingPatcher.Core.Services;
+using SkyrimLightingPatcher.Core.Utilities;
 
 namespace SkyrimLightingPatcher.Tests;
 
@@ -353,6 +355,66 @@ public sealed class PatchExecutorTests
                 reservation.Bytes == 256L * 1024 * 1024);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenOneFileFails_WritesErrorLogAndContinuesRun()
+    {
+        var rootPath = Path.Combine(Path.GetTempPath(), "skyrim-lighting-patch-tests", Guid.NewGuid().ToString("N"));
+        var appHome = Path.Combine(Path.GetTempPath(), "skyrim-lighting-app-home", Guid.NewGuid().ToString("N"));
+        using var scope = new TestEnvironmentScope("SKYRIM_LIGHTING_PATCHER_HOME", appHome);
+        Directory.CreateDirectory(rootPath);
+
+        var firstFile = Path.Combine(rootPath, "meshes", "first.nif");
+        var secondFile = Path.Combine(rootPath, "meshes", "second.nif");
+        Directory.CreateDirectory(Path.GetDirectoryName(firstFile)!);
+        await File.WriteAllTextAsync(firstFile, "first");
+        await File.WriteAllTextAsync(secondFile, "second");
+
+        var report = ScanReport.Create(
+            new ScanRequest(rootPath, new PatchSettings(0.4f, 0.2f)),
+            [
+                new FileScanResult(
+                    firstFile,
+                    [CreateShapeResult(firstFile, "Eye", ShapeKind.Eye, 0.1f, 0.4f)]),
+                new FileScanResult(
+                    secondFile,
+                    [CreateShapeResult(secondFile, "Body", ShapeKind.Body, 0.1f, 0.2f)]),
+            ]);
+
+        var patchExecutor = new PatchExecutor(
+            new PatchPlanner(),
+            new SingleFailurePatchMeshService("first.nif"),
+            new ScanFileResolver(),
+            new BackupStore());
+        var archivePath = Path.Combine(rootPath, "LightingEffect1 Mesh Patcher Output.zip");
+
+        var manifest = await patchExecutor.ExecuteAsync(report, archivePath);
+
+        Assert.Equal(2, manifest.Files.Count);
+        Assert.Equal(1, manifest.Files.Count(static file => file.Status == "Failed"));
+        Assert.Equal(1, manifest.Files.Count(static file => file.Status == "Patched"));
+
+        var failedFile = Assert.Single(manifest.Files.Where(static file => file.Status == "Failed"));
+        Assert.Equal(firstFile, failedFile.FilePath);
+        Assert.Contains("Simulated write failure", failedFile.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+
+        var errorLogPath = Path.Combine(manifest.OutputRootPath, PatchOutputPaths.PatchErrorLogFileName);
+        Assert.True(File.Exists(errorLogPath));
+        var errorLogContent = await File.ReadAllTextAsync(errorLogPath);
+        Assert.Contains(firstFile, errorLogContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Simulated write failure", errorLogContent, StringComparison.OrdinalIgnoreCase);
+
+        Assert.True(File.Exists(archivePath));
+        var archiveErrorLogPath = PatchOutputPaths.GetArchiveErrorLogPath(archivePath);
+        Assert.True(File.Exists(archiveErrorLogPath));
+        var archiveErrorLogContent = await File.ReadAllTextAsync(archiveErrorLogPath);
+        Assert.Contains(firstFile, archiveErrorLogContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Simulated write failure", archiveErrorLogContent, StringComparison.OrdinalIgnoreCase);
+        using var archive = ZipFile.OpenRead(archivePath);
+        Assert.Contains(
+            archive.Entries,
+            static entry => string.Equals(entry.FullName, PatchOutputPaths.PatchErrorLogFileName, StringComparison.OrdinalIgnoreCase));
+    }
+
     private static ShapeScanResult CreateShapeResult(
         string filePath,
         string shapeName,
@@ -389,6 +451,33 @@ public sealed class PatchExecutorTests
             IReadOnlyList<ShapePatchOperation> operations,
             CancellationToken cancellationToken = default)
         {
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+            await File.WriteAllTextAsync(outputPath, $"{Path.GetFileName(sourcePath)}:{operations.Count}", cancellationToken);
+        }
+    }
+
+    private sealed class SingleFailurePatchMeshService(string fileNameToFail) : INifMeshService
+    {
+        private bool hasFailed;
+
+        public Task<IReadOnlyList<NifShapeProbe>> ProbeAsync(string filePath, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public async Task WritePatchedFileAsync(
+            string sourcePath,
+            string outputPath,
+            IReadOnlyList<ShapePatchOperation> operations,
+            CancellationToken cancellationToken = default)
+        {
+            if (!hasFailed &&
+                string.Equals(Path.GetFileName(sourcePath), fileNameToFail, StringComparison.OrdinalIgnoreCase))
+            {
+                hasFailed = true;
+                throw new IOException($"Simulated write failure for {Path.GetFileName(sourcePath)}");
+            }
+
             Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
             await File.WriteAllTextAsync(outputPath, $"{Path.GetFileName(sourcePath)}:{operations.Count}", cancellationToken);
         }

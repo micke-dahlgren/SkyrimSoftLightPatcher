@@ -252,9 +252,55 @@
                   IsVisible="{Binding HasPatchOutputVisible}" />
           <StackPanel Grid.Column="2" Margin="12,0,0,0" Spacing="4">
             <TextBlock VerticalAlignment="Center" Text="{Binding BusyStateText}" Foreground="{Binding BusyStateColor}" IsVisible="{Binding IsPatching}" />
+            <TextBlock VerticalAlignment="Center"
+                       Text="{Binding PatchProgressFileText}"
+                       Foreground="{DynamicResource TextBody}"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding HasPatchProgressFileText}" />
             <TextBlock VerticalAlignment="Center" Text="{Binding CurrentOutputPath}" IsVisible="{Binding HasPatchOutputVisible}" TextWrapping="Wrap" Foreground="{DynamicResource TextBody}" />
           </StackPanel>
         </Grid>
+      </Border>
+
+      <Border Classes="panel" IsVisible="{Binding HasStatusAlert}">
+        <StackPanel Spacing="4">
+          <TextBlock Classes="section-title" Text="Status" />
+          <TextBlock Text="{Binding StatusMessage}"
+                     Foreground="{Binding StatusColor}"
+                     TextWrapping="Wrap" />
+          <StackPanel Spacing="2" IsVisible="{Binding HasStatusLinkPath}">
+            <TextBlock Text="{Binding StatusLinkPrefix}"
+                       Foreground="{Binding StatusColor}"
+                       TextWrapping="Wrap" />
+            <Button Classes="status-link"
+                    Command="{Binding OpenStatusLinkCommand}"
+                    ToolTip.Tip="Open file location">
+              <TextBlock Text="{Binding StatusLinkPath}"
+                         TextWrapping="Wrap"
+                         TextDecorations="Underline" />
+            </Button>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="panel" IsVisible="{Binding IsDebugBuild}">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="section-title" Text="Debug Fault Injection" />
+          <TextBlock Foreground="{DynamicResource TextBody}" TextWrapping="Wrap"
+                     Text="DEBUG build only. Select a failure mode to test non-happy-path behavior for Scan/Patch." />
+          <Grid ColumnDefinitions="Auto,*">
+            <TextBlock Grid.Column="0"
+                       VerticalAlignment="Center"
+                       Margin="0,0,8,0"
+                       Foreground="{DynamicResource TextLabel}"
+                       Text="Scenario:" />
+            <ComboBox Grid.Column="1"
+                      ItemsSource="{Binding DebugFaultOptions}"
+                      SelectedItem="{Binding SelectedDebugFaultOption, Mode=TwoWay}"
+                      MinWidth="380"
+                      HorizontalAlignment="Left" />
+          </Grid>
+        </StackPanel>
       </Border>
     </StackPanel>
   </ScrollViewer>

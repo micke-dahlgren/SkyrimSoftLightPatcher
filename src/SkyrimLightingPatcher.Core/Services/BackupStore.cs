@@ -7,6 +7,8 @@ namespace SkyrimLightingPatcher.Core.Services;
 
 public sealed class BackupStore : IBackupStore
 {
+    private const int MaxRunManifestsPerRoot = 20;
+
     private readonly JsonSerializerOptions serializerOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -16,20 +18,6 @@ public sealed class BackupStore : IBackupStore
         PatchOutputPaths.GetApplicationHomeDirectory(),
         PatchOutputPaths.BackupsFolderName);
 
-    public async Task<string> BackupFileAsync(string runId, string rootPath, string filePath, CancellationToken cancellationToken = default)
-    {
-        var runFilesRoot = Path.Combine(backupsRoot, runId, "files");
-        var relativePath = PathUtility.GetRelativeOrFileName(rootPath, filePath);
-        var backupPath = Path.Combine(runFilesRoot, relativePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
-
-        await using var sourceStream = File.Open(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        await using var destinationStream = File.Open(backupPath, FileMode.Create, FileAccess.Write, FileShare.None);
-        await sourceStream.CopyToAsync(destinationStream, cancellationToken).ConfigureAwait(false);
-
-        return backupPath;
-    }
-
     public async Task WriteManifestAsync(PatchRunManifest manifest, CancellationToken cancellationToken = default)
     {
         var manifestPath = GetManifestPath(manifest.RunId);
@@ -37,6 +25,7 @@ public sealed class BackupStore : IBackupStore
 
         await using var stream = File.Open(manifestPath, FileMode.Create, FileAccess.Write, FileShare.None);
         await JsonSerializer.SerializeAsync(stream, manifest, serializerOptions, cancellationToken).ConfigureAwait(false);
+        await PruneRunFoldersAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<PatchRunManifest?> LoadManifestAsync(string runId, CancellationToken cancellationToken = default)
@@ -57,6 +46,8 @@ public sealed class BackupStore : IBackupStore
         {
             return Array.Empty<BackupRunInfo>();
         }
+
+        await PruneRunFoldersAsync(cancellationToken).ConfigureAwait(false);
 
         var normalizedRoot = PathUtility.NormalizeForComparison(rootPath);
         var results = new List<BackupRunInfo>();
@@ -111,4 +102,85 @@ public sealed class BackupStore : IBackupStore
     {
         return PatchOutputPaths.GetBackupManifestPath(runId);
     }
+
+    private async Task PruneRunFoldersAsync(CancellationToken cancellationToken)
+    {
+        if (!Directory.Exists(backupsRoot))
+        {
+            return;
+        }
+
+        var retainedRuns = new List<RetainedRun>();
+
+        foreach (var runDirectory in Directory.EnumerateDirectories(backupsRoot))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var manifestPath = Path.Combine(runDirectory, PatchOutputPaths.BackupManifestFileName);
+            if (!File.Exists(manifestPath))
+            {
+                TryDeleteRunDirectory(runDirectory);
+                continue;
+            }
+
+            PatchRunManifest? manifest;
+            try
+            {
+                await using var stream = File.OpenRead(manifestPath);
+                manifest = await JsonSerializer.DeserializeAsync<PatchRunManifest>(stream, serializerOptions, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Keep malformed manifests for manual inspection; they are ignored by listing.
+                continue;
+            }
+
+            if (manifest is null)
+            {
+                TryDeleteRunDirectory(runDirectory);
+                continue;
+            }
+
+            if (!HasAnyOutput(manifest))
+            {
+                TryDeleteRunDirectory(runDirectory);
+                continue;
+            }
+
+            retainedRuns.Add(new RetainedRun(runDirectory, manifest));
+        }
+
+        foreach (var runToDelete in retainedRuns
+                     .GroupBy(static run => PathUtility.NormalizeForComparison(run.Manifest.RootPath))
+                     .SelectMany(static group => group
+                         .OrderByDescending(static run => run.Manifest.Timestamp)
+                         .Skip(MaxRunManifestsPerRoot)))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            TryDeleteRunDirectory(runToDelete.RunDirectory);
+        }
+    }
+
+    private static bool HasAnyOutput(PatchRunManifest manifest)
+    {
+        return (!string.IsNullOrWhiteSpace(manifest.OutputArchivePath) && File.Exists(manifest.OutputArchivePath)) ||
+               (!string.IsNullOrWhiteSpace(manifest.OutputRootPath) && Directory.Exists(manifest.OutputRootPath));
+    }
+
+    private static void TryDeleteRunDirectory(string runDirectory)
+    {
+        try
+        {
+            if (Directory.Exists(runDirectory))
+            {
+                Directory.Delete(runDirectory, recursive: true);
+            }
+        }
+        catch
+        {
+            // Best effort cleanup only.
+        }
+    }
+
+    private sealed record RetainedRun(string RunDirectory, PatchRunManifest Manifest);
 }

@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Text;
+using System.Threading;
 using SkyrimLightingPatcher.App.Models;
 using SkyrimLightingPatcher.Core.Models;
 using SkyrimLightingPatcher.Core.Utilities;
@@ -7,11 +9,15 @@ namespace SkyrimLightingPatcher.App.ViewModels;
 
 public partial class MainWindowViewModel
 {
+    private const string TechnicalErrorLinkPrefix = "We saved the error output to";
+
     private async Task ScanAsync()
     {
+        ApplySelectedDebugFaultMode();
+
         if (!Directory.Exists(RootPath))
         {
-            SetStatusError("Choose a valid folder before scanning.");
+            SetStatusError("Please choose a valid source folder before scanning.");
             return;
         }
 
@@ -43,12 +49,21 @@ public partial class MainWindowViewModel
             LatestScanErrorLogPath = report.ScanErrorLogPath;
             ApplyReport(report);
             await LoadCurrentOutputAsync();
-            var baseMessage =
-                $"Scan complete. Found {report.PatchableEyeShapes} patchable eye shape(s), {report.PatchableBodyShapes} patchable body shape(s), and {report.PatchableOtherShapes} patchable other shape(s) across {report.CandidateFiles} file(s).";
-            StatusMessage = report.ErrorFiles > 0 && !string.IsNullOrWhiteSpace(report.ScanErrorLogPath)
-                ? $"{baseMessage} Encountered {report.ErrorFiles} error file(s). Error log: {report.ScanErrorLogPath}"
+            var totalPatchableShapes = report.PatchableEyeShapes + report.PatchableBodyShapes + report.PatchableOtherShapes;
+            var baseMessage = $"Scan complete. Found {report.CandidateFiles} file(s) to patch ({totalPatchableShapes} shape(s)).";
+            var statusMessage = report.ErrorFiles > 0
+                ? !string.IsNullOrWhiteSpace(report.ScanErrorLogPath)
+                    ? $"{baseMessage} Could not read {report.ErrorFiles} file(s). You can still patch the rest. Open Error Log if you want details."
+                    : $"{baseMessage} Could not read {report.ErrorFiles} file(s). You can still patch the rest."
                 : baseMessage;
-            StatusColor = report.ErrorFiles > 0 ? "#FFB3B3" : "#B9F6CA";
+            if (report.ErrorFiles > 0)
+            {
+                SetStatusError(statusMessage);
+            }
+            else
+            {
+                SetStatusSuccess(statusMessage);
+            }
             scanCompleted = true;
         },
         onCanceled: () =>
@@ -85,7 +100,7 @@ public partial class MainWindowViewModel
                 : await TryDetectAndApplyVortexRootAsync(forceStatusMessage: true);
             if (!detected)
             {
-                SetStatusError($"No Skyrim SE {managerLabel} folder was detected.");
+                SetStatusError($"Couldn't find your Skyrim folder automatically for {managerLabel}. Please choose it manually.");
             }
         });
     }
@@ -97,33 +112,35 @@ public partial class MainWindowViewModel
             var dataPath = await vortexPathResolver.TryResolveSkyrimDataPathAsync();
             if (string.IsNullOrWhiteSpace(dataPath))
             {
-                SetStatusError("Could not auto-detect Skyrim Data folder.");
+                SetStatusError("Couldn't find your Skyrim Data folder automatically. Please choose it manually.");
                 return;
             }
 
             SkyrimDataPath = dataPath;
-            SetStatusInfo($"Detected Skyrim Data folder: {SkyrimDataPath}");
+            SetStatusInfo($"Found Skyrim Data folder: {SkyrimDataPath}");
         });
     }
 
     private async Task PatchAsync()
     {
+        ApplySelectedDebugFaultMode();
+
         if (currentReport is null)
         {
-            SetStatusError("Run a scan before patching.");
+            SetStatusError("Please run a scan first.");
             return;
         }
 
         var selectedReport = CreateSelectedReport();
         if (selectedReport is null || selectedReport.PatchableShapes == 0)
         {
-            SetStatusError("Select at least one patchable file before patching.");
+            SetStatusError("Select at least one file to patch.");
             return;
         }
 
         if (!HasOutputDestination)
         {
-            SetStatusError("Select an output destination folder before patching.");
+            SetStatusError("Please choose where to save the patch first.");
             return;
         }
 
@@ -133,12 +150,14 @@ public partial class MainWindowViewModel
         patchCancellationTokenSource = new CancellationTokenSource();
         patchStopRequested = false;
         canStopPatch = true;
+        PatchProgressFileText = string.Empty;
         RefreshCommandState();
 
         IsPatching = true;
+        var patchProgressToken = BeginPatchProgressTracking();
         await RunBusyOperationAsync("Patching meshes...", async () =>
         {
-            var patchProgress = new Progress<PatchProgressUpdate>(ApplyPatchProgress);
+            var patchProgress = new Progress<PatchProgressUpdate>(update => ApplyPatchProgress(update, patchProgressToken));
             PatchRunManifest manifest;
             try
             {
@@ -151,28 +170,39 @@ public partial class MainWindowViewModel
             }
             catch (LowDiskSpaceException lowDiskException)
             {
+                InvalidatePatchProgressTracking();
                 HandleLowDiskSpaceFailure(lowDiskException, outputRootPath);
                 return;
             }
             catch (PatchArchiveCreationException archiveException)
             {
+                InvalidatePatchProgressTracking();
                 HandleArchiveCreationFailure(archiveException);
                 return;
             }
 
-            var cleanupSucceeded = TryCleanupGeneratedOutputRoot(manifest, out var cleanupError);
+            InvalidatePatchProgressTracking();
+            _ = TryCleanupGeneratedOutputRoot(manifest, out _);
             var writtenFiles = manifest.Files.Count(static file => file.Status == "Patched");
             var failedFiles = manifest.Files.Count(static file => file.Status == "Failed");
-            var replacementText = manifest.ReplacedExistingOutput ? "Replaced existing output mod." : "Created output mod.";
+            var replacementText = manifest.ReplacedExistingOutput ? "Patch updated." : "Patch complete.";
+            var failedSummary = failedFiles > 0 ? $" Could not patch {failedFiles} file(s)." : string.Empty;
+            var failedLogHint = failedFiles > 0
+                ? $" See {PatchOutputPaths.PatchErrorLogFileName} next to the zip for details."
+                : string.Empty;
             var managerInstructions = GetSelectedModManagerKind() == ModManagerKind.ModOrganizer2
-                ? "Install that archive in Mod Organizer 2 and place it below the source mods so it wins conflicts."
-                : "Import that archive into Vortex and make it win conflicts against the source mods.";
-            var cleanupMessage = cleanupSucceeded
-                ? " Removed temporary loose files folder."
-                : $" Kept loose files folder: {manifest.OutputRootPath}. {cleanupError}";
-            StatusMessage =
-                $"{replacementText} Wrote {writtenFiles} file(s), failed {failedFiles}. Archive: {manifest.OutputArchivePath}.{cleanupMessage} {managerInstructions} Rebuild if your mesh setup changes.";
-            StatusColor = failedFiles > 0 ? "#FFB3B3" : "#B9F6CA";
+                ? "Install the zip in Mod Organizer 2 and place it below your source mods."
+                : "Install the zip in Vortex and load it after your source mods.";
+            var statusMessage =
+                $"{replacementText} Patched {writtenFiles} file(s).{failedSummary}{failedLogHint} Zip saved to: {manifest.OutputArchivePath}. {managerInstructions}";
+            if (failedFiles > 0)
+            {
+                SetStatusError(statusMessage);
+            }
+            else
+            {
+                SetStatusSuccess(statusMessage);
+            }
             CurrentOutputPath = manifest.OutputArchivePath;
             await LoadCurrentOutputAsync();
             hasPatchedInSession = true;
@@ -182,17 +212,20 @@ public partial class MainWindowViewModel
         },
         onCanceled: () =>
         {
+            InvalidatePatchProgressTracking();
             if (patchStopRequested)
             {
-                SetStatusInfo("Patch stopped.");
+                SetStatusInfo("Patch canceled.");
             }
             else
             {
-                SetStatusError("Patch canceled.");
+                SetStatusError("Patch stopped before finishing.");
             }
         },
         onFinally: () =>
         {
+            InvalidatePatchProgressTracking();
+            PatchProgressFileText = string.Empty;
             IsPatching = false;
             patchCancellationTokenSource?.Dispose();
             patchCancellationTokenSource = null;
@@ -239,9 +272,9 @@ public partial class MainWindowViewModel
                 UseShellExecute = true,
             });
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            SetStatusError($"Unable to open the generated output folder: {exception.Message}");
+            SetStatusError("Couldn't open the output folder. Please open it in File Explorer.");
         }
     }
 
@@ -260,9 +293,41 @@ public partial class MainWindowViewModel
                 UseShellExecute = true,
             });
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            SetStatusError($"Unable to open the scan error log: {exception.Message}");
+            SetStatusError("Couldn't open the error log. Please open it from the shown path.");
+        }
+    }
+
+    private void OpenStatusLink()
+    {
+        if (!CanOpenStatusLink())
+        {
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(StatusLinkPath))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"/select,\"{StatusLinkPath}\"",
+                    UseShellExecute = true,
+                });
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = StatusLinkPath!,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception)
+        {
+            SetStatusError("Couldn't open that path. Please open it in File Explorer.");
         }
     }
 
@@ -286,7 +351,18 @@ public partial class MainWindowViewModel
         }
         catch (Exception exception)
         {
-            SetStatusError(exception.Message);
+            var userMessage = ToUserFriendlyErrorMessage(exception);
+            if (ShouldWriteTechnicalErrorLog(exception))
+            {
+                var technicalLogPath = TryWriteTechnicalErrorLog(exception);
+                if (!string.IsNullOrWhiteSpace(technicalLogPath))
+                {
+                    SetStatusError(userMessage, TechnicalErrorLinkPrefix, technicalLogPath);
+                    return;
+                }
+            }
+
+            SetStatusError(userMessage);
         }
         finally
         {
@@ -339,7 +415,7 @@ public partial class MainWindowViewModel
         HasNoResults = ModGroups.Count == 0;
         EmptyResultsMessage = report.FilesScanned == 0
             ? "No scan results yet. Pick a folder and run Scan."
-            : "No patchable meshes found for the current folder and values. Click Reset to adjust settings, then scan again.";
+            : "No patchable meshes found with your current settings. Click Reset, adjust your options, then scan again.";
         patchRunDirty = true;
         UpdateSelectionSummary();
         RefreshCommandState();
@@ -356,12 +432,16 @@ public partial class MainWindowViewModel
         ErrorFiles = progress.ErrorFiles;
         BusyStateText = $"Scanning meshes... {progress.FilesScanned}/{progress.TotalFiles} ({percent}%)";
         BusyStateColor = "#A9D7FF";
-        StatusMessage = $"Scanning meshes... {progress.FilesScanned}/{progress.TotalFiles} file(s) scanned ({percent}%).";
-        StatusColor = "#A9D7FF";
+        SetStatusInfo($"Scanning meshes... {progress.FilesScanned}/{progress.TotalFiles} file(s) scanned ({percent}%).");
     }
 
-    private void ApplyPatchProgress(PatchProgressUpdate progress)
+    private void ApplyPatchProgress(PatchProgressUpdate progress, long patchProgressToken)
     {
+        if (!IsPatchProgressTrackingActive(patchProgressToken))
+        {
+            return;
+        }
+
         var totalFiles = Math.Max(1, progress.TotalFiles);
         var percent = (int)Math.Round(progress.FilesProcessed * 100.0 / totalFiles);
         var hasReachedFinalization = progress.TotalFiles > 0 && progress.FilesProcessed >= progress.TotalFiles;
@@ -382,21 +462,36 @@ public partial class MainWindowViewModel
         if (!string.IsNullOrWhiteSpace(currentFilePath) &&
             currentFilePath.StartsWith("__status__:", StringComparison.Ordinal))
         {
+            PatchProgressFileText = string.Empty;
             var statusText = NormalizePatchStatusText(currentFilePath["__status__:".Length..].Trim());
             BusyStateText = statusText;
-            StatusMessage =
-                $"{statusText} {progress.FilesProcessed}/{progress.TotalFiles} file(s) patched ({percent}%), {remainingFiles} remaining.";
-            StatusColor = "#A9D7FF";
+            SetStatusInfo($"{statusText} {progress.FilesProcessed}/{progress.TotalFiles} file(s) patched ({percent}%), {remainingFiles} remaining.");
             return;
         }
 
         var currentFileName = string.IsNullOrWhiteSpace(currentFilePath)
             ? "Preparing patch output"
             : Path.GetFileName(currentFilePath);
+        PatchProgressFileText = $"Current file: {currentFileName}";
 
-        StatusMessage =
-            $"Patching meshes... {progress.FilesProcessed}/{progress.TotalFiles} file(s) processed ({percent}%), {remainingFiles} remaining. Current: {currentFileName}.";
-        StatusColor = "#A9D7FF";
+        SetStatusInfo($"Patching meshes... {progress.FilesProcessed}/{progress.TotalFiles} file(s) processed ({percent}%), {remainingFiles} remaining. Current: {currentFileName}.");
+    }
+
+    private long BeginPatchProgressTracking()
+    {
+        var token = Interlocked.Increment(ref nextPatchProgressToken);
+        Interlocked.Exchange(ref activePatchProgressToken, token);
+        return token;
+    }
+
+    private void InvalidatePatchProgressTracking()
+    {
+        Interlocked.Exchange(ref activePatchProgressToken, 0);
+    }
+
+    private bool IsPatchProgressTrackingActive(long token)
+    {
+        return token != 0 && Interlocked.Read(ref activePatchProgressToken) == token;
     }
 
     private static string NormalizePatchStatusText(string statusText)
@@ -408,12 +503,12 @@ public partial class MainWindowViewModel
 
         if (statusText.StartsWith("Finalizing patch manifest", StringComparison.OrdinalIgnoreCase))
         {
-            return "Preparing mod files...";
+            return "Getting patch files ready...";
         }
 
         if (statusText.StartsWith("Recording patch run metadata", StringComparison.OrdinalIgnoreCase))
         {
-            return "Saving patch metadata...";
+            return "Finishing patch...";
         }
 
         return statusText;
@@ -429,10 +524,8 @@ public partial class MainWindowViewModel
             OnPropertyChanged(nameof(HasPatchOutputVisible));
         }
 
-        var archiveError = archiveException.InnerException?.Message ?? archiveException.Message;
-        StatusMessage =
-            $"Patched files were created, but creating the archive failed: {archiveError}. Loose files are in {archiveException.OutputRootPath}. Create a .zip or .7z from that folder before installing it as a mod.";
-        StatusColor = "#FFB3B3";
+        SetStatusError(
+            $"Patch finished, but we couldn't create the zip file. Your patched files are saved in: {archiveException.OutputRootPath}. Please zip that folder manually before installing it.");
         patchRunDirty = true;
         RefreshCommandState();
     }
@@ -446,8 +539,7 @@ public partial class MainWindowViewModel
             OnPropertyChanged(nameof(HasPatchOutputVisible));
         }
 
-        StatusMessage = lowDiskException.Message;
-        StatusColor = "#FFB3B3";
+        SetStatusError(BuildLowDiskStatusMessage(lowDiskException));
         patchRunDirty = true;
         RefreshCommandState();
     }
@@ -456,13 +548,13 @@ public partial class MainWindowViewModel
     {
         if (IsPatching &&
             (BusyStateText.StartsWith("Creating mod file", StringComparison.OrdinalIgnoreCase) ||
-             BusyStateText.StartsWith("Preparing mod files", StringComparison.OrdinalIgnoreCase) ||
-             BusyStateText.StartsWith("Saving patch metadata", StringComparison.OrdinalIgnoreCase)))
+             BusyStateText.StartsWith("Getting patch files ready", StringComparison.OrdinalIgnoreCase) ||
+             BusyStateText.StartsWith("Finishing patch", StringComparison.OrdinalIgnoreCase)))
         {
-            return "Still creating the mod archive. Please wait for completion or click Stop Patch before closing.";
+            return "Still creating your zip file. Please wait, or click Stop Patch before closing.";
         }
 
-        return "Patch is still running. Please wait for completion or click Stop Patch before closing.";
+        return "Patch is still running. Please wait for it to finish, or click Stop Patch before closing.";
     }
 
     public void NotifyCloseBlockedDuringPatch()
@@ -546,7 +638,7 @@ public partial class MainWindowViewModel
         ResetScanPreview();
         IsSettingsLocked = false;
         patchRunDirty = true;
-        SetStatusInfo("Scan reset. You can adjust values and scan again.");
+        SetStatusInfo("Scan reset. Update your options and scan again.");
         BusyStateText = "Ready";
         BusyStateColor = "#D7C29E";
         hasPatchedInSession = false;
@@ -830,7 +922,7 @@ public partial class MainWindowViewModel
 
         if (forceStatusMessage || !currentRootIsSame)
         {
-            SetStatusInfo($"{detectedFolder.Source} Using {RootPath}.");
+            SetStatusInfo($"Using this folder: {RootPath}");
         }
 
         await PersistSettingsSafeAsync();
@@ -875,7 +967,7 @@ public partial class MainWindowViewModel
             var profileSuffix = string.IsNullOrWhiteSpace(detectedInstance.SelectedProfileName)
                 ? string.Empty
                 : $" Profile: {detectedInstance.SelectedProfileName}.";
-            SetStatusInfo($"{detectedInstance.Source} Using {RootPath}.{profileSuffix}");
+            SetStatusInfo($"Using this folder: {RootPath}.{profileSuffix}");
         }
 
         await PersistSettingsSafeAsync();
@@ -926,6 +1018,13 @@ public partial class MainWindowViewModel
                File.Exists(LatestScanErrorLogPath);
     }
 
+    private bool CanOpenStatusLink()
+    {
+        return !IsBusy &&
+               !string.IsNullOrWhiteSpace(StatusLinkPath) &&
+               (File.Exists(StatusLinkPath) || Directory.Exists(StatusLinkPath));
+    }
+
     private void RefreshCommandState()
     {
         DetectVortexCommand.NotifyCanExecuteChanged();
@@ -937,18 +1036,140 @@ public partial class MainWindowViewModel
         ResetScanCommand.NotifyCanExecuteChanged();
         OpenErrorLogCommand.NotifyCanExecuteChanged();
         OpenOutputFolderCommand.NotifyCanExecuteChanged();
+        OpenStatusLinkCommand.NotifyCanExecuteChanged();
     }
 
     private void SetStatusInfo(string message)
     {
-        StatusMessage = message;
-        StatusColor = "#A9D7FF";
+        SetStatus(message, "#A9D7FF");
     }
 
     private void SetStatusError(string message)
     {
+        SetStatus(message, "#FFB3B3");
+    }
+
+    private void SetStatusError(string message, string linkPrefix, string linkPath)
+    {
+        SetStatus(message, "#FFB3B3", linkPrefix, linkPath);
+    }
+
+    private void SetStatusSuccess(string message)
+    {
+        SetStatus(message, "#B9F6CA");
+    }
+
+    private void SetStatus(
+        string message,
+        string color,
+        string? linkPrefix = null,
+        string? linkPath = null)
+    {
         StatusMessage = message;
-        StatusColor = "#FFB3B3";
+        StatusColor = color;
+        StatusLinkPrefix = !string.IsNullOrWhiteSpace(linkPath) && !string.IsNullOrWhiteSpace(linkPrefix)
+            ? linkPrefix
+            : string.Empty;
+        StatusLinkPath = !string.IsNullOrWhiteSpace(linkPath)
+            ? linkPath
+            : null;
+    }
+
+    private static string ToUserFriendlyErrorMessage(Exception exception)
+    {
+        if (exception is LowDiskSpaceException lowDiskSpaceException)
+        {
+            return BuildLowDiskStatusMessage(lowDiskSpaceException);
+        }
+
+        if (exception is PatchArchiveCreationException patchArchiveCreationException)
+        {
+            return $"Patch finished, but we couldn't create the zip file. Your patched files are saved in: {patchArchiveCreationException.OutputRootPath}. Please zip that folder manually before installing it.";
+        }
+
+        return "Something went wrong. Please try again.";
+    }
+
+    private static bool ShouldWriteTechnicalErrorLog(Exception exception)
+    {
+        return exception is not LowDiskSpaceException and not PatchArchiveCreationException;
+    }
+
+    private static string? TryWriteTechnicalErrorLog(Exception exception)
+    {
+        try
+        {
+            var appHome = PatchOutputPaths.GetApplicationHomeDirectory();
+            var errorLogPath = Path.Combine(appHome, PatchOutputPaths.PatchErrorLogFileName);
+            var errorLogContent = BuildTechnicalErrorLogContent(exception);
+            Directory.CreateDirectory(Path.GetDirectoryName(errorLogPath)!);
+            File.WriteAllText(errorLogPath, errorLogContent);
+            return errorLogPath;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string BuildTechnicalErrorLogContent(Exception exception)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Skyrim Glowing Mesh Patcher - technical error log");
+        builder.AppendLine($"Created: {DateTimeOffset.Now:O}");
+        builder.AppendLine();
+
+        var depth = 0;
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            depth++;
+            builder.AppendLine($"Exception #{depth}: {current.GetType().FullName}");
+            builder.AppendLine($"Message: {current.Message}");
+            builder.AppendLine("Stack trace:");
+            builder.AppendLine(string.IsNullOrWhiteSpace(current.StackTrace) ? "(none)" : current.StackTrace);
+            builder.AppendLine();
+        }
+
+        return builder.ToString();
+    }
+
+    private static string BuildLowDiskStatusMessage(LowDiskSpaceException exception)
+    {
+        var stageText = ToUserFriendlyStageName(exception.StageName);
+        var requiredText = FormatBytes(exception.RequiredBytes);
+        var availableText = FormatBytes(exception.AvailableBytes);
+        var neededBytes = Math.Max(0, exception.RequiredBytes - exception.AvailableBytes);
+        var neededText = FormatBytes(neededBytes);
+        return $"Not enough disk space while {stageText}. Need about {requiredText} but only {availableText} is available at {exception.TargetPath}. Free at least {neededText} and run Patch again.";
+    }
+
+    private static string ToUserFriendlyStageName(string stageName)
+    {
+        return stageName switch
+        {
+            PatchExecutionStages.PreparingOutput => "preparing the output folder",
+            PatchExecutionStages.WritingPatchedFiles => "writing patched files",
+            PatchExecutionStages.WritingOutputManifest => "saving patch details",
+            PatchExecutionStages.CreatingArchive => "creating the zip file",
+            PatchExecutionStages.WritingRunManifest => "finishing the patch",
+            _ => stageName,
+        };
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        var value = Math.Max(0, bytes);
+        var units = new[] { "B", "KB", "MB", "GB", "TB" };
+        var unitIndex = 0;
+        var size = (double)value;
+
+        while (size >= 1024 && unitIndex < units.Length - 1)
+        {
+            size /= 1024;
+            unitIndex++;
+        }
+
+        return $"{size:0.##} {units[unitIndex]}";
     }
 
     private ModManagerKind GetSelectedModManagerKind()

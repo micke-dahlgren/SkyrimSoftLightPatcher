@@ -1,6 +1,7 @@
 using SkyrimLightingPatcher.Core.Interfaces;
 using SkyrimLightingPatcher.Core.Models;
 using Microsoft.Win32;
+using System.Runtime.Versioning;
 
 namespace SkyrimLightingPatcher.Core.Services;
 
@@ -204,6 +205,7 @@ public sealed class ModOrganizer2PathResolver : IModOrganizer2PathResolver
             .ToArray();
     }
 
+    [SupportedOSPlatform("windows")]
     private static IEnumerable<string> EnumerateAppPathCandidates()
     {
         const string appPathSubKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\ModOrganizer.exe";
@@ -235,6 +237,7 @@ public sealed class ModOrganizer2PathResolver : IModOrganizer2PathResolver
         }
     }
 
+    [SupportedOSPlatform("windows")]
     private static IEnumerable<string> EnumerateUninstallInstallLocations()
     {
         const string uninstallSubKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
@@ -258,6 +261,7 @@ public sealed class ModOrganizer2PathResolver : IModOrganizer2PathResolver
         }
     }
 
+    [SupportedOSPlatform("windows")]
     private static IEnumerable<string> EnumerateUninstallInstallLocationsFromHive(RegistryKey hive, string subKeyPath)
     {
         using var uninstallRoot = hive.OpenSubKey(subKeyPath, writable: false);

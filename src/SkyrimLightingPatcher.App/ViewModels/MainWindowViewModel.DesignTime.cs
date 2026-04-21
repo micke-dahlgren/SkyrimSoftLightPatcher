@@ -1,5 +1,6 @@
 using SkyrimLightingPatcher.Core.Interfaces;
 using SkyrimLightingPatcher.Core.Models;
+using SkyrimLightingPatcher.Core.Utilities;
 
 namespace SkyrimLightingPatcher.App.ViewModels;
 
@@ -98,7 +99,7 @@ public partial class MainWindowViewModel
             return Task.FromResult(new PatchRunManifest(
                 "design-time",
                 report.Request.RootPath,
-                outputRootPath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SkyrimLightingPatcher", "GeneratedMods", "Glowing Mesh Patcher Output"),
+                outputRootPath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), PatchOutputPaths.ApplicationFolderName, "GeneratedMods", "Glowing Mesh Patcher Output"),
                 outputArchivePath,
                 "Glowing Mesh Patcher Output",
                 false,
@@ -117,7 +118,7 @@ public partial class MainWindowViewModel
                 new BackupRunInfo(
                     "202604130001",
                     rootPath,
-                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SkyrimLightingPatcher", "GeneratedMods", "Glowing Mesh Patcher Output"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), PatchOutputPaths.ApplicationFolderName, "GeneratedMods", "Glowing Mesh Patcher Output"),
                     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Glowing Mesh Patcher Output.zip"),
                     "Glowing Mesh Patcher Output",
                     DateTimeOffset.Now.AddMinutes(-30),

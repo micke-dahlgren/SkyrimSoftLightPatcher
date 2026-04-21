@@ -54,8 +54,6 @@ public interface IPatchExecutor
 
 public interface IBackupStore
 {
-    Task<string> BackupFileAsync(string runId, string rootPath, string filePath, CancellationToken cancellationToken = default);
-
     Task WriteManifestAsync(PatchRunManifest manifest, CancellationToken cancellationToken = default);
 
     Task<PatchRunManifest?> LoadManifestAsync(string runId, CancellationToken cancellationToken = default);
@@ -68,13 +66,6 @@ public interface IDiskSpaceMonitor
     long GetAvailableBytes(string stageName, string targetPath);
 
     IDisposable ReserveSpace(string stageName, string targetPath, string reservationName, long bytes);
-}
-
-public interface IRestoreService
-{
-    Task<IReadOnlyList<BackupRunInfo>> ListRunsAsync(string rootPath, CancellationToken cancellationToken = default);
-
-    Task<PatchRunManifest> RestoreAsync(string runId, CancellationToken cancellationToken = default);
 }
 
 public interface IOutputModService

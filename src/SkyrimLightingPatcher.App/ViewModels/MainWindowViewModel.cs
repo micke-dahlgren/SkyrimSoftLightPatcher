@@ -18,6 +18,7 @@ public partial class MainWindowViewModel : ObservableObject
     private readonly IOutputModService outputModService;
     private readonly IVortexPathResolver vortexPathResolver;
     private readonly IModOrganizer2PathResolver modOrganizer2PathResolver;
+    private readonly DebugFaultState? debugFaultState;
     private ScanReport? currentReport;
     private bool initialized;
     private CancellationTokenSource? scanCancellationTokenSource;
@@ -29,6 +30,8 @@ public partial class MainWindowViewModel : ObservableObject
     private bool patchRunDirty = true;
     private bool suppressSettingsPersistence;
     private bool canStopPatch = true;
+    private long nextPatchProgressToken;
+    private long activePatchProgressToken;
 
     public MainWindowViewModel()
     {
@@ -38,6 +41,7 @@ public partial class MainWindowViewModel : ObservableObject
         outputModService = new DesignTimeOutputModService();
         vortexPathResolver = new DesignTimeVortexPathResolver();
         modOrganizer2PathResolver = new DesignTimeModOrganizer2PathResolver();
+        debugFaultState = null;
 
         DetectVortexCommand = new AsyncRelayCommand(DetectVortexAsync, () => !IsBusy);
         DetectSkyrimDataCommand = new AsyncRelayCommand(DetectSkyrimDataAsync, () => !IsBusy);
@@ -48,6 +52,8 @@ public partial class MainWindowViewModel : ObservableObject
         ResetScanCommand = new RelayCommand(ResetScan, CanResetScan);
         OpenErrorLogCommand = new RelayCommand(OpenErrorLog, CanOpenErrorLog);
         OpenOutputFolderCommand = new RelayCommand(OpenOutputFolder, CanOpenOutputFolder);
+        OpenStatusLinkCommand = new RelayCommand(OpenStatusLink, CanOpenStatusLink);
+        SelectedDebugFaultOption = DebugFaultOptions.FirstOrDefault();
     }
 
     public MainWindowViewModel(
@@ -56,7 +62,8 @@ public partial class MainWindowViewModel : ObservableObject
         IPatchExecutor patchExecutor,
         IOutputModService outputModService,
         IVortexPathResolver vortexPathResolver,
-        IModOrganizer2PathResolver modOrganizer2PathResolver)
+        IModOrganizer2PathResolver modOrganizer2PathResolver,
+        DebugFaultState? debugFaultState = null)
     {
         this.settingsStore = settingsStore;
         this.scanService = scanService;
@@ -64,6 +71,7 @@ public partial class MainWindowViewModel : ObservableObject
         this.outputModService = outputModService;
         this.vortexPathResolver = vortexPathResolver;
         this.modOrganizer2PathResolver = modOrganizer2PathResolver;
+        this.debugFaultState = debugFaultState;
 
         DetectVortexCommand = new AsyncRelayCommand(DetectVortexAsync, () => !IsBusy);
         DetectSkyrimDataCommand = new AsyncRelayCommand(DetectSkyrimDataAsync, () => !IsBusy);
@@ -74,6 +82,8 @@ public partial class MainWindowViewModel : ObservableObject
         ResetScanCommand = new RelayCommand(ResetScan, CanResetScan);
         OpenErrorLogCommand = new RelayCommand(OpenErrorLog, CanOpenErrorLog);
         OpenOutputFolderCommand = new RelayCommand(OpenOutputFolder, CanOpenOutputFolder);
+        OpenStatusLinkCommand = new RelayCommand(OpenStatusLink, CanOpenStatusLink);
+        SelectedDebugFaultOption = DebugFaultOptions.FirstOrDefault();
     }
 
     public ObservableCollection<ModScanGroupViewModel> ModGroups { get; } = [];
@@ -82,6 +92,20 @@ public partial class MainWindowViewModel : ObservableObject
         "Vortex",
         "Mod Organizer 2 (Global)",
         "Mod Organizer 2 (Portable)",
+    ];
+    public IReadOnlyList<DebugFaultOption> DebugFaultOptions { get; } =
+    [
+        new(DebugPatchFailureMode.None, "None (normal behavior)"),
+        new(DebugPatchFailureMode.PatchLowDiskPreparingOutput, "Patch: low disk while preparing output folder"),
+        new(DebugPatchFailureMode.PatchLowDiskWritingPatchedFiles, "Patch: low disk while writing patched files"),
+        new(DebugPatchFailureMode.PatchLowDiskWritingOutputManifest, "Patch: low disk while writing patch manifest"),
+        new(DebugPatchFailureMode.PatchLowDiskCreatingArchive, "Patch: low disk while creating output archive"),
+        new(DebugPatchFailureMode.PatchLowDiskWritingRunManifest, "Patch: low disk while writing run manifest"),
+        new(DebugPatchFailureMode.PatchInjectSingleFileFailure, "Patch: inject one file failure, continue run"),
+        new(DebugPatchFailureMode.PatchArchiveCreationFailure, "Patch: archive creation failure after loose output"),
+        new(DebugPatchFailureMode.PatchUnexpectedFailure, "Patch: unexpected fatal error"),
+        new(DebugPatchFailureMode.ScanInjectSingleErrorFile, "Scan: inject one per-file scan error"),
+        new(DebugPatchFailureMode.ScanUnexpectedFailure, "Scan: unexpected fatal error"),
     ];
 
     public IAsyncRelayCommand DetectVortexCommand { get; }
@@ -100,6 +124,8 @@ public partial class MainWindowViewModel : ObservableObject
     public IRelayCommand OpenErrorLogCommand { get; }
 
     public IRelayCommand OpenOutputFolderCommand { get; }
+
+    public IRelayCommand OpenStatusLinkCommand { get; }
 
     [ObservableProperty]
     private string rootPath = string.Empty;
@@ -135,16 +161,25 @@ public partial class MainWindowViewModel : ObservableObject
     private bool isPatching;
 
     [ObservableProperty]
-    private string statusMessage = "Select a mesh root and output destination, then run Scan to preview patchable meshes.";
+    private string statusMessage = "Choose your mod folder and patch destination, then click Scan.";
 
     [ObservableProperty]
     private string statusColor = "#A9D7FF";
+
+    [ObservableProperty]
+    private string statusLinkPrefix = string.Empty;
+
+    [ObservableProperty]
+    private string? statusLinkPath;
 
     [ObservableProperty]
     private string busyStateText = "Ready";
 
     [ObservableProperty]
     private string busyStateColor = "#D7C29E";
+
+    [ObservableProperty]
+    private string patchProgressFileText = string.Empty;
 
     [ObservableProperty]
     private int filesScanned;
@@ -176,6 +211,9 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private string? latestScanErrorLogPath;
 
+    [ObservableProperty]
+    private DebugFaultOption? selectedDebugFaultOption;
+
     public bool HasGeneratedOutput =>
         !string.IsNullOrWhiteSpace(CurrentOutputPath) &&
         (File.Exists(CurrentOutputPath) || Directory.Exists(CurrentOutputPath));
@@ -200,6 +238,26 @@ public partial class MainWindowViewModel : ObservableObject
     public bool HasScanResults => ShowScanSections;
 
     public bool HasSelectionSummary => !string.IsNullOrWhiteSpace(SelectionSummaryText);
+
+    public bool HasPatchProgressFileText => !string.IsNullOrWhiteSpace(PatchProgressFileText);
+
+    public bool HasStatusAlert =>
+        !string.IsNullOrWhiteSpace(StatusMessage) &&
+        IsAlertStatusColor(StatusColor);
+
+    public bool HasStatusLinkPath => !string.IsNullOrWhiteSpace(StatusLinkPath);
+
+    public bool IsDebugBuild
+    {
+        get
+        {
+#if DEBUG
+            return true;
+#else
+            return false;
+#endif
+        }
+    }
 
     public bool CanEditSettings => HasConfiguredRoots && !IsSettingsLocked;
     public bool IsFolderSectionEnabled => !IsScanning && !IsPatching;
@@ -238,8 +296,7 @@ public partial class MainWindowViewModel : ObservableObject
         OutputDestinationPath = string.Empty;
         SkyrimDataPath = string.Empty;
         CurrentOutputPath = null;
-        StatusMessage = "Select a mesh root and output destination, then run Scan.";
-        StatusColor = "#A9D7FF";
+        SetStatusInfo("Choose your mod folder and patch destination, then click Scan.");
         hasPatchedInSession = false;
         OnPropertyChanged(nameof(HasPatchOutputVisible));
         _ = TryAutoDetectSkyrimDataPathAsync();
@@ -358,6 +415,27 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(HasSelectionSummary));
     }
 
+    partial void OnPatchProgressFileTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasPatchProgressFileText));
+    }
+
+    partial void OnStatusMessageChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasStatusAlert));
+    }
+
+    partial void OnStatusColorChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasStatusAlert));
+    }
+
+    partial void OnStatusLinkPathChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasStatusLinkPath));
+        RefreshCommandState();
+    }
+
     partial void OnIsBusyChanged(bool value)
     {
         RefreshCommandState();
@@ -392,6 +470,33 @@ public partial class MainWindowViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(HasScanErrorLog));
         RefreshCommandState();
+    }
+
+    partial void OnSelectedDebugFaultOptionChanged(DebugFaultOption? value)
+    {
+        ApplySelectedDebugFaultMode();
+
+        // Changing debug fault scenarios should always allow another patch run,
+        // even when no scan/filter inputs changed since the previous run.
+        patchRunDirty = true;
+        RefreshCommandState();
+    }
+
+    private void ApplySelectedDebugFaultMode()
+    {
+        if (debugFaultState is null)
+        {
+            return;
+        }
+
+        var selectedMode = SelectedDebugFaultOption?.Mode ?? DebugPatchFailureMode.None;
+        debugFaultState.PatchFailureMode = selectedMode;
+        debugFaultState.ScanFailureMode = selectedMode;
+    }
+
+    private static bool IsAlertStatusColor(string statusColor)
+    {
+        return string.Equals(statusColor, "#FFB3B3", StringComparison.OrdinalIgnoreCase);
     }
 
 }
